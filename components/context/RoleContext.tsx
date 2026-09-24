@@ -3,60 +3,77 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserRole, EmployeeUser } from '@/lib/types';
 
+const DEFAULT_ADMIN: EmployeeUser = {
+  id: 'emp-001',
+  name: 'Sai Varma',
+  email: 'admin@grovastra.com',
+  mobile: '9876543210',
+  role: 'ADMIN',
+  password: 'admin',
+  active: true,
+  created_at: new Date().toISOString(),
+};
+
 interface RoleContextType {
   role: UserRole;
-  currentUser: EmployeeUser | null;
-  setCurrentUser: (user: EmployeeUser | null) => void;
+  currentUser: EmployeeUser;
+  setCurrentUser: (user: EmployeeUser) => void;
   userEmail: string;
   logout: () => void;
+  isMounted: boolean;
 }
 
 const RoleContext = createContext<RoleContextType>({
   role: 'ADMIN',
-  currentUser: null,
+  currentUser: DEFAULT_ADMIN,
   setCurrentUser: () => {},
-  userEmail: '',
+  userEmail: 'admin@grovastra.com',
   logout: () => {},
+  isMounted: false,
 });
 
 export const RoleProvider = ({ children }: { children: React.ReactNode }) => {
-  const [currentUser, setCurrentUserState] = useState<EmployeeUser | null>(null);
+  const [currentUser, setCurrentUserState] = useState<EmployeeUser>(DEFAULT_ADMIN);
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
+    setIsMounted(true);
     if (typeof window !== 'undefined') {
       const savedUser = localStorage.getItem('grovastra_active_user');
       if (savedUser) {
         try {
           const parsed = JSON.parse(savedUser) as EmployeeUser;
-          setCurrentUserState(parsed);
+          if (parsed && parsed.role) {
+            setCurrentUserState(parsed);
+          }
         } catch (e) {
           localStorage.removeItem('grovastra_active_user');
         }
+      } else {
+        localStorage.setItem('grovastra_active_user', JSON.stringify(DEFAULT_ADMIN));
       }
     }
   }, []);
 
-  const setCurrentUser = (user: EmployeeUser | null) => {
+  const setCurrentUser = (user: EmployeeUser) => {
     setCurrentUserState(user);
-    if (user) {
+    if (typeof window !== 'undefined' && user) {
       localStorage.setItem('grovastra_active_user', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('grovastra_active_user');
     }
   };
 
   const logout = () => {
-    setCurrentUserState(null);
+    setCurrentUserState(DEFAULT_ADMIN);
     if (typeof window !== 'undefined') {
       localStorage.removeItem('grovastra_active_user');
     }
   };
 
   const role: UserRole = currentUser?.role || 'ADMIN';
-  const userEmail = currentUser?.email || '';
+  const userEmail = currentUser?.email || 'admin@grovastra.com';
 
   return (
-    <RoleContext.Provider value={{ role, currentUser, setCurrentUser, userEmail, logout }}>
+    <RoleContext.Provider value={{ role, currentUser, setCurrentUser, userEmail, logout, isMounted }}>
       {children}
     </RoleContext.Provider>
   );
