@@ -383,6 +383,23 @@ export async function getFeatures(): Promise<Feature[]> {
 }
 
 export async function getAllShops(): Promise<Shop[]> {
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/surveys');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.interviews) {
+          const shopList = data.interviews.map((inv: any) => inv.shop).filter(Boolean);
+          const uniqueShops = Array.from(new Map(shopList.map((s: any) => [s.id, s])).values()) as Shop[];
+          if (uniqueShops.length > 0) {
+            localStore.shops = uniqueShops;
+            return uniqueShops;
+          }
+        }
+      }
+    } catch (err) {}
+  }
+
   try {
     const srv = await getMongoServerModule();
     if (srv && srv.getAllShopsMongo) {
@@ -394,6 +411,19 @@ export async function getAllShops(): Promise<Shop[]> {
 }
 
 export async function getAllInterviews(): Promise<Interview[]> {
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/surveys');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.interviews) {
+          localStore.interviews = data.interviews;
+          return data.interviews;
+        }
+      }
+    } catch (err) {}
+  }
+
   try {
     const srv = await getMongoServerModule();
     if (srv && srv.getAllInterviewsMongo) {
@@ -410,6 +440,16 @@ export async function getAllInterviews(): Promise<Interview[]> {
 }
 
 export async function getInterviewById(interviewId: string) {
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch(`/api/surveys/${interviewId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.interview) return data;
+      }
+    } catch (err) {}
+  }
+
   try {
     const srv = await getMongoServerModule();
     if (srv && srv.getInterviewByIdMongo) {

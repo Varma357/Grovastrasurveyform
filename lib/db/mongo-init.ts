@@ -29,15 +29,18 @@ export async function seedMongoDatabase() {
       console.log('   ✅ Survey Version v1.0 seeded');
     }
 
-    // 2. Seed Interviewers
+    // 2. Seed Interviewers (Drop all non-authorized profiles)
+    await InterviewerModel.deleteMany({
+      email: { $nin: ['rajesh@groviews.com', 'navadeep@groviews.com'] }
+    });
+
     const defaultInterviewers = [
-      { id: 'int-001', name: 'Field Lead Interviewer', email: 'interviewer@grovastra.com', mobile: '9123456789', active: true, created_at: new Date().toISOString() },
-      { id: 'int-002', name: 'Product Researcher', email: 'researcher@grovastra.com', mobile: '9898989898', active: true, created_at: new Date().toISOString() },
+      { id: 'emp-int-01', name: 'Navadeep', email: 'navadeep@groviews.com', mobile: '9704917189', active: true, created_at: new Date().toISOString() },
     ];
     const intOps: any[] = defaultInterviewers.map((int) => ({
       updateOne: {
-        filter: { id: int.id },
-        update: { $setOnInsert: int },
+        filter: { email: int.email },
+        update: { $set: int },
         upsert: true,
       },
     }));
