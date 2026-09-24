@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Download, Printer, ShieldCheck, Sparkles, TrendingUp, AlertTriangle, Share2 } from 'lucide-react';
 import { getAllShops, getAllInterviews, localStore } from '@/lib/db/db';
+import { exportElementToPDF, sharePDFReport } from '@/lib/pdfExport';
 
 export default function ExecutiveReportPage() {
   const [shopsCount, setShopsCount] = useState(1);
@@ -55,22 +56,20 @@ Acceptable Price Range: ₹2,000–₹5,000 / Month
 
         <div className="flex items-center space-x-3">
           <button
-            onClick={() => window.print()}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center space-x-2 shadow-lg shadow-indigo-600/25"
+            onClick={() => exportElementToPDF('printable-executive-report', 'Grovastra_Executive_Report')}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center space-x-2 shadow-lg shadow-indigo-600/25 cursor-pointer"
           >
-            <Printer className="w-4 h-4" />
-            <span>Print / Save PDF</span>
+            <Download className="w-4 h-4" />
+            <span>Download Executive PDF</span>
           </button>
 
-          <a
-            href={whatsappUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center space-x-2 shadow-lg shadow-emerald-600/30"
+          <button
+            onClick={() => sharePDFReport('printable-executive-report', 'Grovastra_Executive_Report', shareText)}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center space-x-2 shadow-lg shadow-emerald-600/30 cursor-pointer"
           >
             <Share2 className="w-4 h-4" />
-            <span>Share Executive Summary on WhatsApp</span>
-          </a>
+            <span>Share Executive PDF on WhatsApp</span>
+          </button>
         </div>
       </div>
 

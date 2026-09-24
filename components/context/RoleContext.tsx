@@ -3,37 +3,26 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserRole, EmployeeUser } from '@/lib/types';
 
-const DEFAULT_ADMIN: EmployeeUser = {
-  id: 'emp-001',
-  name: 'Sai Varma',
-  email: 'admin@grovastra.com',
-  mobile: '9876543210',
-  role: 'ADMIN',
-  password: 'admin',
-  active: true,
-  created_at: new Date().toISOString(),
-};
-
 interface RoleContextType {
-  role: UserRole;
-  currentUser: EmployeeUser;
-  setCurrentUser: (user: EmployeeUser) => void;
+  role: UserRole | null;
+  currentUser: EmployeeUser | null;
+  setCurrentUser: (user: EmployeeUser | null) => void;
   userEmail: string;
   logout: () => void;
   isMounted: boolean;
 }
 
 const RoleContext = createContext<RoleContextType>({
-  role: 'ADMIN',
-  currentUser: DEFAULT_ADMIN,
+  role: null,
+  currentUser: null,
   setCurrentUser: () => {},
-  userEmail: 'admin@grovastra.com',
+  userEmail: '',
   logout: () => {},
   isMounted: false,
 });
 
 export const RoleProvider = ({ children }: { children: React.ReactNode }) => {
-  const [currentUser, setCurrentUserState] = useState<EmployeeUser>(DEFAULT_ADMIN);
+  const [currentUser, setCurrentUserState] = useState<EmployeeUser | null>(null);
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -45,32 +34,40 @@ export const RoleProvider = ({ children }: { children: React.ReactNode }) => {
           const parsed = JSON.parse(savedUser) as EmployeeUser;
           if (parsed && parsed.role) {
             setCurrentUserState(parsed);
+          } else {
+            localStorage.removeItem('grovastra_active_user');
+            setCurrentUserState(null);
           }
         } catch (e) {
           localStorage.removeItem('grovastra_active_user');
+          setCurrentUserState(null);
         }
       } else {
-        localStorage.setItem('grovastra_active_user', JSON.stringify(DEFAULT_ADMIN));
+        setCurrentUserState(null);
       }
     }
   }, []);
 
-  const setCurrentUser = (user: EmployeeUser) => {
+  const setCurrentUser = (user: EmployeeUser | null) => {
     setCurrentUserState(user);
-    if (typeof window !== 'undefined' && user) {
-      localStorage.setItem('grovastra_active_user', JSON.stringify(user));
+    if (typeof window !== 'undefined') {
+      if (user) {
+        localStorage.setItem('grovastra_active_user', JSON.stringify(user));
+      } else {
+        localStorage.removeItem('grovastra_active_user');
+      }
     }
   };
 
   const logout = () => {
-    setCurrentUserState(DEFAULT_ADMIN);
+    setCurrentUserState(null);
     if (typeof window !== 'undefined') {
       localStorage.removeItem('grovastra_active_user');
     }
   };
 
-  const role: UserRole = currentUser?.role || 'ADMIN';
-  const userEmail = currentUser?.email || 'admin@grovastra.com';
+  const role: UserRole | null = currentUser?.role || null;
+  const userEmail = currentUser?.email || '';
 
   return (
     <RoleContext.Provider value={{ role, currentUser, setCurrentUser, userEmail, logout, isMounted }}>
@@ -80,3 +77,4 @@ export const RoleProvider = ({ children }: { children: React.ReactNode }) => {
 };
 
 export const useRole = () => useContext(RoleContext);
+

@@ -4,6 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Printer, Share2, Store, CheckCircle2, ShieldCheck, MapPin, Calendar, Clock, Sparkles, Download } from 'lucide-react';
 import { getInterviewById, getAllInterviews, localStore } from '@/lib/db/db';
+import { exportElementToPDF, sharePDFReport } from '@/lib/pdfExport';
 
 function ShopReportContent() {
   const searchParams = useSearchParams();
@@ -91,22 +92,20 @@ ${categoryLines}
 
         <div className="flex items-center space-x-3">
           <button
-            onClick={() => window.print()}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center space-x-2 shadow-lg shadow-indigo-600/25"
+            onClick={() => exportElementToPDF('printable-shop-report', `Grovastra_Shop_Report_${shop?.shop_name || 'Store'}`)}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center space-x-2 shadow-lg shadow-indigo-600/25 cursor-pointer"
           >
-            <Printer className="w-4 h-4" />
-            <span>Print / Save as PDF</span>
+            <Download className="w-4 h-4" />
+            <span>Download Shop PDF</span>
           </button>
 
-          <a
-            href={whatsappUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center space-x-2 shadow-lg shadow-emerald-600/30"
+          <button
+            onClick={() => sharePDFReport('printable-shop-report', `Grovastra_Shop_Report_${shop?.shop_name || 'Store'}`, shareText)}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center space-x-2 shadow-lg shadow-emerald-600/30 cursor-pointer"
           >
             <Share2 className="w-4 h-4" />
-            <span>Share Full Report on WhatsApp</span>
-          </a>
+            <span>Share PDF on WhatsApp</span>
+          </button>
         </div>
       </div>
 

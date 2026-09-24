@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { FileSpreadsheet, Eye, FileText, CheckCircle2, AlertTriangle, Calendar, Store } from 'lucide-react';
+import { FileSpreadsheet, Eye, FileText, CheckCircle2, AlertTriangle, Calendar, Store, Download } from 'lucide-react';
 import { getAllInterviews, getInterviewById } from '@/lib/db/db';
 import { Interview } from '@/lib/types';
+import { exportElementToPDF } from '@/lib/pdfExport';
 
 export default function InterviewsPage() {
   const [interviews, setInterviews] = useState<Interview[]>([]);
@@ -64,7 +65,7 @@ export default function InterviewsPage() {
         {/* Detailed Report View */}
         <div className="lg:col-span-2">
           {reportData ? (
-            <div className="glass-panel p-6 space-y-6">
+            <div id="printable-interview-report" className="glass-panel p-6 space-y-6 bg-dark-800 border border-dark-600 rounded-2xl">
               <div className="flex items-center justify-between border-b border-dark-600 pb-4">
                 <div>
                   <span className="text-xs font-mono text-indigo-400 font-bold">{reportData.interview?.interview_code}</span>
@@ -74,11 +75,11 @@ export default function InterviewsPage() {
                   </p>
                 </div>
                 <button
-                  onClick={() => window.print()}
-                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5"
+                  onClick={() => exportElementToPDF('printable-interview-report', `Grovastra_Interview_${reportData.interview?.interview_code || 'Report'}`)}
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 cursor-pointer shadow"
                 >
-                  <FileText className="w-4 h-4" />
-                  <span>Generate Report PDF</span>
+                  <Download className="w-4 h-4 text-slate-200" />
+                  <span>Download Report PDF</span>
                 </button>
               </div>
 
