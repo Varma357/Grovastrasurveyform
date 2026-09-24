@@ -14,10 +14,20 @@ export default function ExecutiveReportPage() {
   }, []);
 
   const loadStats = async () => {
-    const s = await getAllShops();
-    const i = await getAllInterviews();
-    setShopsCount(s.length || 1);
-    setInterviewsCount(i.length || 1);
+    try {
+      const res = await fetch('/api/surveys');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.interviews) {
+          setInterviewsCount(data.interviews.length || 0);
+          const shopList = data.interviews.map((inv: any) => inv.shop).filter(Boolean);
+          const uniqueShops = Array.from(new Set(shopList.map((s: any) => s.id)));
+          setShopsCount(uniqueShops.length || 0);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load executive report stats from MongoDB:', err);
+    }
   };
 
   // WhatsApp Executive Summary Text

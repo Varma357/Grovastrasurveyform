@@ -356,3 +356,50 @@ export async function getAllResponsesMongo(): Promise<SurveyResponse[]> {
     created_at: d.created_at,
   }));
 }
+
+export async function deleteInterviewMongo(interviewId: string): Promise<boolean> {
+  await ensureMongoReady();
+  const interview = await InterviewModel.findOne({ id: interviewId });
+  if (!interview) return false;
+
+  await InterviewModel.deleteOne({ id: interviewId });
+  await SurveyResponseModel.deleteMany({ interview_id: interviewId });
+  await CategoryScoreModel.deleteMany({ interview_id: interviewId });
+  await PurchaseIntentModel.deleteMany({ interview_id: interviewId });
+  await ShopPhotoModel.deleteMany({ interview_id: interviewId });
+
+  // If shop has no remaining interviews, we can optionally clean up the shop or keep it
+  const remainingCount = await InterviewModel.countDocuments({ shop_id: interview.shop_id });
+  if (remainingCount === 0) {
+    await ShopModel.deleteOne({ id: interview.shop_id });
+  }
+
+  return true;
+}
+
+export async function deleteDemoDataMongo(): Promise<boolean> {
+  await ensureMongoReady();
+  // Delete interviews with codes starting with DEMO or test data
+  const demoInterviews = await InterviewModel.find({
+    $or: [
+      { interview_code: /^DEMO/i },
+      { interview_code: /^TEST/i },
+      { interview_code: /^SAMPLE/i },
+    ]
+  }).lean();
+
+  const demoIds = demoInterviews.map((i: any) => i.id);
+  const demoShopIds = demoInterviews.map((i: any) => i.shop_id);
+
+  if (demoIds.length > 0) {
+    await InterviewModel.deleteMany({ id: { $in: demoIds } });
+    await SurveyResponseModel.deleteMany({ interview_id: { $in: demoIds } });
+    await CategoryScoreModel.deleteMany({ interview_id: { $in: demoIds } });
+    await PurchaseIntentModel.deleteMany({ interview_id: { $in: demoIds } });
+    await ShopPhotoModel.deleteMany({ interview_id: { $in: demoIds } });
+    await ShopModel.deleteMany({ id: { $in: demoShopIds } });
+  }
+
+  return true;
+}
+

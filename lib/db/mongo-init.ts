@@ -46,40 +46,35 @@ export async function seedMongoDatabase() {
     // 3. Seed Default Employees
     const defaultEmployees = [
       {
-        id: 'emp-001',
-        name: 'Sai Varma',
-        email: 'admin@grovastra.com',
-        mobile: '9876543210',
+        id: 'emp-admin-01',
+        name: 'Rajesh',
+        email: 'rajesh@groviews.com',
+        mobile: '7901003210',
         role: 'ADMIN' as const,
-        password: 'admin',
+        password: '7901003210',
         active: true,
         created_at: new Date().toISOString(),
       },
       {
-        id: 'emp-002',
-        name: 'Ramesh Kumar',
-        email: 'interviewer@grovastra.com',
-        mobile: '9123456789',
+        id: 'emp-int-01',
+        name: 'Navadeep',
+        email: 'navadeep@groviews.com',
+        mobile: '9704917189',
         role: 'INTERVIEWER' as const,
-        password: '123',
-        active: true,
-        created_at: new Date().toISOString(),
-      },
-      {
-        id: 'emp-003',
-        name: 'Priya Sharma',
-        email: 'priya@grovastra.com',
-        mobile: '9898989898',
-        role: 'INTERVIEWER' as const,
-        password: '123',
+        password: '9704917189',
         active: true,
         created_at: new Date().toISOString(),
       },
     ];
+    // Remove old demo accounts from DB
+    await EmployeeModel.deleteMany({
+      email: { $nin: ['rajesh@groviews.com', 'navadeep@groviews.com'] }
+    });
+
     const empOps: any[] = defaultEmployees.map((emp) => ({
       updateOne: {
-        filter: { id: emp.id },
-        update: { $setOnInsert: emp },
+        filter: { email: emp.email },
+        update: { $set: emp },
         upsert: true,
       },
     }));

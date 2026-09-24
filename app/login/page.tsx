@@ -15,27 +15,61 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
     if (!identifier.trim() || !password.trim()) {
-      setError('Please enter your registered email/mobile number and password.');
+      setError('Please enter your registered email/mobile number and password or PIN.');
       return;
     }
 
     setIsSubmitting(true);
-    const user = authenticateUser(identifier, password);
 
-    if (user) {
-      setCurrentUser(user);
-      if (user.role === 'ADMIN') {
-        router.push('/dashboard');
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, password }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.user) {
+        setCurrentUser(data.user);
+        if (data.user.role === 'ADMIN') {
+          router.push('/dashboard');
+        } else {
+          router.push('/survey');
+        }
       } else {
-        router.push('/survey');
+        // Fallback to local authentication helper if offline
+        const localUser = authenticateUser(identifier, password);
+        if (localUser) {
+          setCurrentUser(localUser);
+          if (localUser.role === 'ADMIN') {
+            router.push('/dashboard');
+          } else {
+            router.push('/survey');
+          }
+        } else {
+          setError(data.error || 'Invalid Email / Mobile Number or Password. Please verify your credentials.');
+        }
       }
-    } else {
-      setError('Invalid Email / Mobile Number or Password. Please verify your credentials and try again.');
+    } catch (err) {
+      // Local fallback
+      const localUser = authenticateUser(identifier, password);
+      if (localUser) {
+        setCurrentUser(localUser);
+        if (localUser.role === 'ADMIN') {
+          router.push('/dashboard');
+        } else {
+          router.push('/survey');
+        }
+      } else {
+        setError('Network authentication error. Please check your connection.');
+      }
+    } finally {
       setIsSubmitting(false);
     }
   };

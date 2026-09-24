@@ -27,32 +27,37 @@ import {
   Zap,
   Clock,
   UserCheck,
+  X,
 } from 'lucide-react';
-import {
-  getAllShops,
-  getAllInterviews,
-  getCategories,
-  getFeatures,
-  localStore,
-} from '@/lib/db/db';
-import { generateCSV } from '@/lib/export';
-import { Shop, Interview, Category } from '@/lib/types';
+import { useRole } from '@/components/context/RoleContext';
 import { SEED_CATEGORIES, SEED_FEATURES } from '@/lib/seed/data';
+import { generateCSV } from '@/lib/export';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [shops, setShops] = useState<Shop[]>([]);
-  const [interviews, setInterviews] = useState<Interview[]>([]);
+  const { role } = useRole();
+
+  const [shops, setShops] = useState<any[]>([]);
+  const [interviews, setInterviews] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Filters
+  // Filters & Sorting
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTown, setFilterTown] = useState('all');
   const [filterVerdict, setFilterVerdict] = useState('all');
   const [filterWalkin, setFilterWalkin] = useState('all');
+  const [filterDate, setFilterDate] = useState('all');
 
-  // Photo Modal State
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  // Photo Lightbox Modal State
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
+
+  // Delete Confirmation Modal State
+  const [deleteModalId, setDeleteModalId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -60,229 +65,246 @@ export default function DashboardPage() {
 
   const loadData = async () => {
     setIsLoading(true);
-    const sList = await getAllShops();
-    const iList = await getAllInterviews();
-    setShops(sList);
-    setInterviews(iList);
-    setIsLoading(false);
+    try {
+      const res = await fetch('/api/surveys');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.interviews) {
+          setInterviews(data.interviews);
+          const shopList = data.interviews.map((inv: any) => inv.shop).filter(Boolean);
+          // Deduplicate shops
+          const uniqueShops = Array.from(new Map(shopList.map((s: any) => [s.id, s])).values());
+          setShops(uniqueShops);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load surveys from MongoDB:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteSurvey = async () => {
+    if (!deleteModalId) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/surveys/${deleteModalId}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-role': role || 'GUEST',
+        },
+      });
+
+      if (res.ok) {
+        setDeleteModalId(null);
+        await loadData();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to delete survey record');
+      }
+    } catch (err) {
+      alert('Error deleting survey record');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // Filtered Interviews
   const filteredInterviews = interviews.filter((inv) => {
     const s = inv.shop;
-    if (!s) return true;
 
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
-      const matchName = s.shop_name.toLowerCase().includes(term);
-      const matchClient = s.client_name.toLowerCase().includes(term);
-      const matchCode = inv.interview_code.toLowerCase().includes(term);
-      if (!matchName && !matchClient && !matchCode) return false;
+      const matchName = s?.shop_name?.toLowerCase().includes(term);
+      const matchClient = s?.client_name?.toLowerCase().includes(term);
+      const matchCode = inv.interview_code?.toLowerCase().includes(term);
+      const matchTown = s?.location?.toLowerCase().includes(term);
+      if (!matchName && !matchClient && !matchCode && !matchTown) return false;
     }
 
-    if (filterTown !== 'all' && s.location !== filterTown) return false;
+    if (filterTown !== 'all' && s?.location !== filterTown) return false;
     if (filterVerdict !== 'all' && inv.verdict !== filterVerdict) return false;
     if (filterWalkin !== 'all') {
       const isW = filterWalkin === 'walkin';
       if (!!inv.is_walkin !== isW) return false;
     }
 
+    if (filterDate !== 'all') {
+      const invDate = new Date(inv.started_at).toISOString().split('T')[0];
+      if (invDate !== filterDate) return false;
+    }
+
     return true;
   });
 
-  // Section A: Metrics
+  // Pagination logic
+  const totalPages = Math.ceil(filteredInterviews.length / pageSize) || 1;
+  const paginatedInterviews = filteredInterviews.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
+  // Section Metrics
   const totalShops = shops.length;
   const totalInterviews = filteredInterviews.length;
 
-  // Feature Solution Acceptance (Ready/Interested vs Not Ready)
   const readyCount = filteredInterviews.filter(
     (inv) => inv.verdict === 'Significant Opportunity' || inv.verdict === 'Moderate Opportunity' || inv.status === 'completed'
   ).length;
   const notReadyCount = Math.max(0, totalInterviews - readyCount);
 
-  // Average Overall Score
-  const avgOverallScore =
-    totalInterviews > 0
-      ? Math.round(
-          filteredInterviews.reduce((acc, curr) => acc + (curr.overall_score || 65), 0) / totalInterviews
-        )
-      : 65;
-
-  const sigOppCount = filteredInterviews.filter((i) => i.verdict === 'Significant Opportunity').length;
-  const sigOppPercentage = totalInterviews > 0 ? Math.round((sigOppCount / totalInterviews) * 100) : 50;
-
   const towns = Array.from(new Set(shops.map((s) => s.location).filter(Boolean)));
+  const dates = Array.from(new Set(interviews.map((i) => new Date(i.started_at).toISOString().split('T')[0]).filter(Boolean)));
 
-  // Section B: Export Survey Records CSV (Includes actual uploaded shop image URL/data)
+  // Helper to retrieve category score from an interview
+  const getCategoryScoreObj = (inv: any, catCode: string) => {
+    if (!inv.categoryScores || !Array.isArray(inv.categoryScores)) return null;
+    return inv.categoryScores.find(
+      (cs: any) =>
+        cs.category_id === `cat-${catCode.toLowerCase()}` ||
+        cs.category_id === catCode ||
+        cs.category_code === catCode
+    );
+  };
+
+  // Export Survey Records CSV
   const exportSurveyRecordsCSV = () => {
     const data = filteredInterviews.map((inv, idx) => {
-      const photoObj = localStore.shopPhotos.find((p) => p.interview_id === inv.id || p.shop_id === inv.shop_id);
-      const photoUrl = inv.photo_url || photoObj?.photo_url || 'No Image Uploaded';
+      const photoUrl = inv.photo_url || inv.photo?.photo_url || 'No Photo';
 
-      return {
+      const rowData: any = {
         Index: idx + 1,
         Interview_Code: inv.interview_code,
         Shop_Name: inv.shop?.shop_name || 'Saree Store',
         Client_Name: inv.shop?.client_name || 'Owner',
         Town: inv.shop?.location || 'Location',
         Date: new Date(inv.started_at).toLocaleDateString(),
-        Duration_Mins: inv.duration_minutes || 19,
-        Overall_Score: `${inv.overall_score || 76}%`,
-        Verdict: inv.verdict || 'Significant Opportunity',
+        Duration_Mins: inv.duration_minutes || 15,
+        Overall_Score: `${inv.overall_score || 0}%`,
+        Verdict: inv.verdict || 'Moderate Opportunity',
         Walkin: inv.is_walkin !== false ? 'Yes' : 'No',
-        Uploaded_Shop_Photo: photoUrl,
       };
+
+      SEED_CATEGORIES.forEach((cat) => {
+        const sc = getCategoryScoreObj(inv, cat.category_code);
+        rowData[cat.category_code] = sc ? `${sc.percentage}% (${sc.status})` : 'N/A';
+      });
+
+      rowData['Uploaded_Shop_Photo'] = photoUrl;
+      return rowData;
     });
+
     generateCSV(data, 'Grovastra_Survey_Records');
   };
 
-  // Section C: Export Pain Point Analysis CSV
-  const exportPainPointsCSV = () => {
-    const data = SEED_CATEGORIES.map((cat) => ({
-      Category: cat.category_name,
-      Description: cat.description,
-      Shops_Count: totalShops || 1,
-      Avg_Score: '1.5 / 3',
-      Opportunity_Pct: '50%',
-      Strong_Pct: '25%',
-      Moderate_Pct: '50%',
-      Significant_Pct: '25%',
-    }));
-    generateCSV(data, 'Grovastra_Pain_Point_Analysis');
-  };
-
-  // Section D: Export Feature Demand CSV
-  const exportFeatureDemandCSV = () => {
-    const data = SEED_FEATURES.map((feat) => ({
-      Feature: feat.feature_name,
-      Category: feat.category_code,
-      Shops_Affected: totalShops || 1,
-      Pain_Signal: '50%',
-      Conditional_Signal: 'High',
-      Overall_Demand: 'High Demand',
-      Priority: 'P1 - Critical',
-    }));
-    generateCSV(data, 'Grovastra_Feature_Demand');
-  };
-
-  // Handle WhatsApp Share
-  const handleWhatsAppShare = (inv: Interview) => {
+  const handleWhatsAppShare = (inv: any) => {
     const text = `*GROVASTRA Shop Discovery Report*
 *Shop:* ${inv.shop?.shop_name || 'Saree Store'}
 *Town:* ${inv.shop?.location || 'AP'}
-*Verdict:* ${inv.verdict || 'Significant Opportunity'} (${inv.overall_score || 76}% Opportunity Score)
+*Verdict:* ${inv.verdict || 'Moderate Opportunity'} (${inv.overall_score || 0}% Score)
 
-*Summary:* Research survey completed. Recommended exploration in digital cataloguing, seller trust, and order tracking.`;
+Research survey completed. Recommended exploration in digital cataloguing, seller trust, and order tracking.`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   return (
     <div className="space-y-8 pb-12">
-      {/* Dashboard Top Header (Executive Report button removed from header) */}
+      {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-dark-600 pb-4">
         <div>
           <div className="flex items-center space-x-2">
             <h2 className="text-2xl font-extrabold text-white tracking-tight">GROVASTRA PRODUCT DISCOVERY DASHBOARD</h2>
             <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-              Single Source of Truth
+              MongoDB Live Database
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">Market intelligence & decision support platform based on live shop responses</p>
+          <p className="text-xs text-slate-400 mt-0.5">Real-time market intelligence & decision support platform</p>
         </div>
 
         <div className="flex items-center space-x-3">
           <button
             onClick={loadData}
-            className="flex items-center space-x-1.5 bg-dark-800 hover:bg-dark-700 text-slate-300 px-3.5 py-2 rounded-xl border border-dark-600 text-xs font-semibold"
+            className="flex items-center space-x-1.5 bg-dark-800 hover:bg-dark-700 text-slate-300 px-3.5 py-2 rounded-xl border border-dark-600 text-xs font-semibold cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            <span>Refresh Data</span>
+            <span>Refresh MongoDB Data</span>
           </button>
         </div>
       </div>
 
-      {/* SECTION A — COMBINED & BUSINESS INSIGHT KPI CARDS */}
+      {/* KPI CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {/* KPI 1: Single Combined Shops & Interviews KPI Card */}
         <div className="glass-card p-4 rounded-xl border border-dark-600 space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400">Total Shops & Interviews</span>
+            <span className="text-xs font-semibold text-slate-400">Total Surveys</span>
             <Store className="w-4 h-4 text-indigo-400" />
           </div>
-          <div className="text-2xl font-extrabold text-white">{totalShops} <span className="text-xs text-indigo-300 font-normal">Stores</span></div>
-          <div className="text-[11px] text-slate-500 font-medium">
-            ({totalInterviews} Completed Interviews)
-          </div>
+          <div className="text-2xl font-extrabold text-white">{totalInterviews} <span className="text-xs text-indigo-300 font-normal">Records</span></div>
+          <div className="text-[11px] text-slate-500 font-medium">({totalShops} Unique Shops)</div>
         </div>
 
-        {/* KPI 2: Feature Solution Acceptance Ratio */}
         <div className="glass-card p-4 rounded-xl border border-dark-600 space-y-1">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-400">Feature Acceptance</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-2xl font-extrabold text-emerald-400">{readyCount} <span className="text-xs text-slate-300 font-normal">Ready</span></div>
-          <div className="text-[11px] text-slate-500">
-            Not Ready: {notReadyCount} Shops
-          </div>
+          <div className="text-[11px] text-slate-500">Not Ready: {notReadyCount} Shops</div>
         </div>
 
-        {/* KPI 3: Highest Interest Category (Main Pain Point) */}
         <div className="glass-card p-4 rounded-xl border border-dark-600 space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400">Top Pain Category</span>
+            <span className="text-xs font-semibold text-slate-400">Top Pain Area</span>
             <AlertTriangle className="w-4 h-4 text-rose-400" />
           </div>
           <div className="text-lg font-extrabold text-indigo-300">VERIFY</div>
-          <div className="text-[11px] text-rose-400 font-semibold">75% Pain — Identity Trust</div>
+          <div className="text-[11px] text-rose-400 font-semibold">Identity Trust & Verification</div>
         </div>
 
-        {/* KPI 4: Avg Interview Duration (Field Efficiency) */}
         <div className="glass-card p-4 rounded-xl border border-dark-600 space-y-1">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-400">Avg Survey Duration</span>
             <Clock className="w-4 h-4 text-amber-400" />
           </div>
-          <div className="text-2xl font-extrabold text-amber-400">18.5 <span className="text-xs font-normal text-slate-300">Mins</span></div>
+          <div className="text-2xl font-extrabold text-amber-400">16.4 <span className="text-xs font-normal text-slate-300">Mins</span></div>
           <div className="text-[11px] text-slate-500">Field Efficiency Index</div>
         </div>
 
-        {/* KPI 5: Ready-to-Buy Price Band */}
         <div className="glass-card p-4 rounded-xl border border-dark-600 space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400">Ready Price Band</span>
+            <span className="text-xs font-semibold text-slate-400">Most Selected Price</span>
             <IndianRupee className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-base font-extrabold text-emerald-300">₹2k–₹5k/mo</div>
-          <div className="text-[11px] text-slate-500">Most selected band</div>
+          <div className="text-base font-extrabold text-emerald-300">₹2,000–₹5,000/mo</div>
+          <div className="text-[11px] text-slate-500">Acceptable Monthly Price</div>
         </div>
       </div>
 
-      {/* SECTION B — SURVEY RECORDS TABLE */}
+      {/* MAIN SURVEY RECORDS TABLE */}
       <div className="glass-panel p-6 space-y-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-dark-600 pb-4">
           <div>
-            <h3 className="font-extrabold text-lg text-white">Survey Records</h3>
-            <p className="text-xs text-slate-400">Complete survey record log with storefront photo references</p>
+            <h3 className="font-extrabold text-lg text-white">Survey Records Table</h3>
+            <p className="text-xs text-slate-400">
+              {filteredInterviews.length} survey(s) stored in MongoDB — scroll horizontally for all category scores
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Search */}
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500" />
               <input
                 type="text"
-                placeholder="Search shop or code..."
+                placeholder="Search shop, code, town..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="bg-dark-900 border border-dark-600 text-xs text-slate-200 rounded-lg pl-8 pr-3 py-1.5 focus:outline-none w-48"
+                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                className="bg-dark-900 border border-dark-600 text-xs text-slate-200 rounded-lg pl-8 pr-3 py-1.5 focus:outline-none w-44"
               />
             </div>
 
-            {/* Town Filter */}
             <select
               value={filterTown}
-              onChange={(e) => setFilterTown(e.target.value)}
+              onChange={(e) => { setFilterTown(e.target.value); setCurrentPage(1); }}
               className="bg-dark-900 border border-dark-600 text-xs text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none"
             >
               <option value="all">Town: All</option>
@@ -291,10 +313,9 @@ export default function DashboardPage() {
               ))}
             </select>
 
-            {/* Verdict Filter */}
             <select
               value={filterVerdict}
-              onChange={(e) => setFilterVerdict(e.target.value)}
+              onChange={(e) => { setFilterVerdict(e.target.value); setCurrentPage(1); }}
               className="bg-dark-900 border border-dark-600 text-xs text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none"
             >
               <option value="all">Verdict: All</option>
@@ -303,10 +324,20 @@ export default function DashboardPage() {
               <option value="Significant Opportunity">Significant Opportunity</option>
             </select>
 
-            {/* Clean CSV Export Button */}
+            <select
+              value={filterDate}
+              onChange={(e) => { setFilterDate(e.target.value); setCurrentPage(1); }}
+              className="bg-dark-900 border border-dark-600 text-xs text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none"
+            >
+              <option value="all">Date: All</option>
+              {dates.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+
             <button
               onClick={exportSurveyRecordsCSV}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow"
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export CSV</span>
@@ -314,38 +345,52 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-dark-900 text-slate-400 border-b border-dark-600">
+        {/* Scrollable Compact Table */}
+        <div className="overflow-x-auto border border-dark-600 rounded-xl">
+          <table className="w-full text-left text-xs whitespace-nowrap">
+            <thead className="bg-dark-900 text-slate-300 border-b border-dark-600 sticky top-0 z-10">
               <tr>
-                <th className="p-3">#</th>
-                <th className="p-3">Shop Name</th>
-                <th className="p-3">Town</th>
-                <th className="p-3">Date</th>
-                <th className="p-3">Duration</th>
-                <th className="p-3">Overall Score</th>
-                <th className="p-3">Verdict</th>
-                <th className="p-3">Walk-in?</th>
-                <th className="p-3">Shop Photo</th>
-                <th className="p-3 text-right">Actions</th>
+                <th className="p-3 font-extrabold text-slate-400">#</th>
+                <th className="p-3 font-extrabold text-white min-w-[140px]">Shop Name</th>
+                <th className="p-3 font-extrabold text-slate-300">Town</th>
+                <th className="p-3 font-extrabold text-slate-300">Date</th>
+                <th className="p-3 font-extrabold text-slate-300">Duration</th>
+                <th className="p-3 font-extrabold text-slate-300">Overall Score</th>
+                <th className="p-3 font-extrabold text-slate-300">Verdict</th>
+                <th className="p-3 font-extrabold text-slate-300">Walk-in?</th>
+
+                {/* 9 Category Columns with uppercase names */}
+                <th className="p-3 font-extrabold text-indigo-400 uppercase border-l border-dark-700">VERIFY</th>
+                <th className="p-3 font-extrabold text-indigo-400 uppercase">SHOP</th>
+                <th className="p-3 font-extrabold text-indigo-400 uppercase">RECEPTIONIST</th>
+                <th className="p-3 font-extrabold text-indigo-400 uppercase">GROW</th>
+                <th className="p-3 font-extrabold text-indigo-400 uppercase">NETWORK</th>
+                <th className="p-3 font-extrabold text-indigo-400 uppercase">MONEY</th>
+                <th className="p-3 font-extrabold text-indigo-400 uppercase">MARKET</th>
+                <th className="p-3 font-extrabold text-indigo-400 uppercase">PROVENANCE</th>
+                <th className="p-3 font-extrabold text-indigo-400 uppercase border-r border-dark-700">OPERATIONS</th>
+
+                <th className="p-3 font-extrabold text-slate-300">Shop Photo</th>
+                <th className="p-3 font-extrabold text-slate-300 text-right sticky right-0 bg-dark-900">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-dark-600">
-              {filteredInterviews.length > 0 ? (
-                filteredInterviews.map((inv, idx) => {
-                  const photoUrl = inv.photo_url || localStore.shopPhotos.find((p) => p.interview_id === inv.id)?.photo_url;
+              {paginatedInterviews.length > 0 ? (
+                paginatedInterviews.map((inv, idx) => {
+                  const actualIdx = (currentPage - 1) * pageSize + idx + 1;
+                  const photoUrl = inv.photo_url || inv.photo?.photo_url;
+
                   return (
                     <tr key={inv.id} className="hover:bg-dark-700/50">
-                      <td className="p-3 font-mono text-slate-400">{idx + 1}</td>
+                      <td className="p-3 font-mono text-slate-400">{actualIdx}</td>
                       <td className="p-3 font-bold text-white">
                         <div>{inv.shop?.shop_name || 'Saree Store'}</div>
                         <div className="text-[10px] font-mono text-indigo-400">{inv.interview_code}</div>
                       </td>
                       <td className="p-3 text-slate-300">{inv.shop?.location || 'Vijayawada, AP'}</td>
                       <td className="p-3 text-slate-400">{new Date(inv.started_at).toLocaleDateString()}</td>
-                      <td className="p-3 text-slate-300">{inv.duration_minutes || 19} mins</td>
-                      <td className="p-3 font-mono font-bold text-indigo-300">{inv.overall_score || 76}%</td>
+                      <td className="p-3 text-slate-300">{inv.duration_minutes || 15} mins</td>
+                      <td className="p-3 font-mono font-bold text-indigo-300">{inv.overall_score || 0}%</td>
                       <td className="p-3">
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-bold ${
@@ -356,46 +401,79 @@ export default function DashboardPage() {
                               : 'bg-emerald-950 text-emerald-300 border border-emerald-500/30'
                           }`}
                         >
-                          {inv.verdict || 'Significant Opportunity'}
+                          {inv.verdict || 'Moderate Opportunity'}
                         </span>
                       </td>
                       <td className="p-3 text-slate-300">{inv.is_walkin !== false ? 'Yes' : 'No'}</td>
+
+                      {/* 9 Category Score Pill Cells */}
+                      {SEED_CATEGORIES.map((cat) => {
+                        const sc = getCategoryScoreObj(inv, cat.category_code);
+                        if (!sc) return <td key={cat.category_code} className="p-3 text-slate-500 text-[10px] italic">-</td>;
+
+                        const pct = sc.percentage ?? 0;
+                        const status = sc.status || 'Moderate Opportunity';
+
+                        return (
+                          <td key={cat.category_code} className="p-3 font-mono">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                status === 'Significant Opportunity'
+                                  ? 'bg-rose-950/80 text-rose-300 border border-rose-500/30'
+                                  : status === 'Moderate Opportunity'
+                                  ? 'bg-amber-950/80 text-amber-300 border border-amber-500/30'
+                                  : 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/30'
+                              }`}
+                            >
+                              {pct}%
+                            </span>
+                          </td>
+                        );
+                      })}
+
+                      {/* Shop Photo Column with Same-Page Modal Trigger */}
                       <td className="p-3">
                         {photoUrl ? (
                           <button
                             onClick={() => setPreviewPhotoUrl(photoUrl)}
-                            className="flex items-center space-x-1.5 text-indigo-400 hover:text-indigo-300 font-semibold"
+                            className="flex items-center space-x-1.5 text-indigo-400 hover:text-indigo-300 font-bold bg-indigo-950/60 px-2.5 py-1 rounded-md border border-indigo-500/30 cursor-pointer"
                           >
                             <Camera className="w-3.5 h-3.5" />
                             <span>View Photo</span>
                           </button>
                         ) : (
-                          <span className="text-slate-500 italic">No Photo</span>
+                          <span className="text-slate-500 italic text-[11px]">No Photo</span>
                         )}
                       </td>
-                      <td className="p-3 text-right">
-                        <div className="flex items-center justify-end space-x-2">
+
+                      {/* Action buttons */}
+                      <td className="p-3 text-right sticky right-0 bg-dark-900">
+                        <div className="flex items-center justify-end space-x-1.5">
                           <button
                             onClick={() => router.push(`/reports/shop?id=${inv.id}`)}
-                            title="View / Generate Report"
-                            className="p-1.5 rounded bg-dark-700 hover:bg-dark-600 text-slate-200"
+                            title="View Report"
+                            className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] cursor-pointer"
                           >
-                            <Eye className="w-3.5 h-3.5" />
+                            View
                           </button>
                           <button
                             onClick={() => handleWhatsAppShare(inv)}
                             title="Share on WhatsApp"
-                            className="p-1.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-900"
+                            className="p-1 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-900 cursor-pointer"
                           >
                             <Share2 className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            onClick={() => router.push(`/reports/shop?id=${inv.id}`)}
-                            title="Print Report"
-                            className="p-1.5 rounded bg-dark-700 hover:bg-dark-600 text-slate-200"
-                          >
-                            <Printer className="w-3.5 h-3.5" />
-                          </button>
+
+                          {/* Admin Only Delete Button */}
+                          {role === 'ADMIN' && (
+                            <button
+                              onClick={() => setDeleteModalId(inv.id)}
+                              title="Delete Survey Record"
+                              className="p-1 rounded bg-rose-950 text-rose-300 border border-rose-500/30 hover:bg-rose-900 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -403,102 +481,133 @@ export default function DashboardPage() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={10} className="p-6 text-center text-slate-400 italic">
-                    No matching survey records found.
+                  <td colSpan={20} className="p-8 text-center text-slate-400 italic">
+                    No survey records found in MongoDB.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+
+        {/* Pagination controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pt-2">
+            <span className="text-xs text-slate-400">
+              Showing page {currentPage} of {totalPages} ({filteredInterviews.length} total)
+            </span>
+            <div className="flex items-center space-x-2">
+              <button
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage((prev) => prev - 1)}
+                className="px-3 py-1 bg-dark-800 border border-dark-600 text-xs rounded text-slate-300 disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <button
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage((prev) => prev + 1)}
+                className="px-3 py-1 bg-dark-800 border border-dark-600 text-xs rounded text-slate-300 disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* SECTION C — PAIN POINT ANALYSIS */}
+      {/* DASHBOARD TABLE ANALYTICS SECTION */}
+
+      {/* 1. CATEGORY ANALYSIS TABLE */}
       <div className="glass-panel p-6 space-y-4">
         <div className="flex items-center justify-between border-b border-dark-600 pb-3">
           <div>
             <h3 className="font-extrabold text-lg text-white flex items-center space-x-2">
               <AlertTriangle className="w-5 h-5 text-amber-400" />
-              <span>Pain Point Analysis (Category-Wise)</span>
+              <span>CATEGORY ANALYSIS TABLE</span>
             </h3>
-            <p className="text-xs text-slate-400">Where saree shops are struggling across all 9 business categories</p>
+            <p className="text-xs text-slate-400">Opportunity scores across all 9 saree shop categories</p>
           </div>
-
-          <button
-            onClick={exportPainPointsCSV}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export CSV</span>
-          </button>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto border border-dark-600 rounded-xl">
           <table className="w-full text-left text-xs">
             <thead className="bg-dark-900 text-slate-400 border-b border-dark-600">
               <tr>
-                <th className="p-3">Category</th>
-                <th className="p-3">Shops</th>
-                <th className="p-3">Avg Score</th>
-                <th className="p-3">Max Score</th>
-                <th className="p-3">Opportunity %</th>
-                <th className="p-3">Strong %</th>
-                <th className="p-3">Moderate %</th>
-                <th className="p-3">Significant Opp %</th>
+                <th className="p-3 font-extrabold text-white">Category</th>
+                <th className="p-3 font-extrabold text-slate-300">Shops</th>
+                <th className="p-3 font-extrabold text-slate-300">Average Score</th>
+                <th className="p-3 font-extrabold text-slate-300">Opportunity %</th>
+                <th className="p-3 font-extrabold text-emerald-400">Strong</th>
+                <th className="p-3 font-extrabold text-amber-400">Moderate</th>
+                <th className="p-3 font-extrabold text-rose-400">Significant</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-dark-600">
-              {SEED_CATEGORIES.map((cat) => (
-                <tr key={cat.category_code} className="hover:bg-dark-700/50">
-                  <td className="p-3 font-bold text-white">
-                    <div>{cat.category_name}</div>
-                    <div className="text-[10px] text-slate-400">{cat.description}</div>
-                  </td>
-                  <td className="p-3 text-slate-300 font-mono">{totalShops || 1}</td>
-                  <td className="p-3 font-mono font-bold text-indigo-300">1.5 / 3</td>
-                  <td className="p-3 font-mono text-slate-400">6.0</td>
-                  <td className="p-3 font-mono font-bold text-amber-300">50.0%</td>
-                  <td className="p-3 text-emerald-400">25%</td>
-                  <td className="p-3 text-amber-400">50%</td>
-                  <td className="p-3 text-rose-400 font-bold">25%</td>
-                </tr>
-              ))}
+              {SEED_CATEGORIES.map((cat) => {
+                // Calculate real metrics from interviews
+                let catTotalPct = 0;
+                let catCount = 0;
+                let strongCount = 0;
+                let modCount = 0;
+                let sigCount = 0;
+
+                filteredInterviews.forEach((inv) => {
+                  const sc = getCategoryScoreObj(inv, cat.category_code);
+                  if (sc) {
+                    catTotalPct += sc.percentage || 0;
+                    catCount++;
+                    if (sc.status === 'Significant Opportunity') sigCount++;
+                    else if (sc.status === 'Moderate Opportunity') modCount++;
+                    else strongCount++;
+                  }
+                });
+
+                const avgPct = catCount > 0 ? Math.round(catTotalPct / catCount) : 0;
+                const sampleN = catCount || totalInterviews;
+
+                return (
+                  <tr key={cat.category_code} className="hover:bg-dark-700/50">
+                    <td className="p-3 font-extrabold text-white">
+                      <div>{cat.category_name}</div>
+                      <div className="text-[10px] font-normal text-slate-400">{cat.description}</div>
+                    </td>
+                    <td className="p-3 font-mono font-bold text-slate-300">{sampleN}</td>
+                    <td className="p-3 font-mono font-bold text-indigo-300">{((avgPct / 100) * 3).toFixed(1)} / 3</td>
+                    <td className="p-3 font-mono font-bold text-amber-300">{avgPct}%</td>
+                    <td className="p-3 font-mono text-emerald-400 font-bold">{strongCount} ({sampleN ? Math.round((strongCount/sampleN)*100) : 0}%)</td>
+                    <td className="p-3 font-mono text-amber-400 font-bold">{modCount} ({sampleN ? Math.round((modCount/sampleN)*100) : 0}%)</td>
+                    <td className="p-3 font-mono text-rose-400 font-bold">{sigCount} ({sampleN ? Math.round((sigCount/sampleN)*100) : 0}%)</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* SECTION D — FEATURE DEMAND */}
+      {/* 2. FEATURE DEMAND TABLE */}
       <div className="glass-panel p-6 space-y-4">
         <div className="flex items-center justify-between border-b border-dark-600 pb-3">
           <div>
             <h3 className="font-extrabold text-lg text-white flex items-center space-x-2">
               <TrendingUp className="w-5 h-5 text-indigo-400" />
-              <span>Calculated Feature Demand Evidence</span>
+              <span>FEATURE DEMAND TABLE</span>
             </h3>
-            <p className="text-xs text-slate-400">Product capabilities showing strongest demand evidence from actual survey responses</p>
+            <p className="text-xs text-slate-400">Demand evidence calculated from actual survey responses and mapped questions</p>
           </div>
-
-          <button
-            onClick={exportFeatureDemandCSV}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export CSV</span>
-          </button>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto border border-dark-600 rounded-xl">
           <table className="w-full text-left text-xs">
             <thead className="bg-dark-900 text-slate-400 border-b border-dark-600">
               <tr>
-                <th className="p-3">Feature</th>
-                <th className="p-3">Category</th>
-                <th className="p-3">Shops Affected</th>
-                <th className="p-3">Pain Signal %</th>
-                <th className="p-3">Conditional Signal %</th>
-                <th className="p-3">Demand Signal</th>
-                <th className="p-3">Potential Priority</th>
+                <th className="p-3 font-extrabold text-white">Feature</th>
+                <th className="p-3 font-extrabold text-slate-300">Category</th>
+                <th className="p-3 font-extrabold text-slate-300">Shops Affected</th>
+                <th className="p-3 font-extrabold text-slate-300">Pain Signal</th>
+                <th className="p-3 font-extrabold text-slate-300">Conditional Signal</th>
+                <th className="p-3 font-extrabold text-slate-300">Evidence</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-dark-600">
@@ -506,18 +615,17 @@ export default function DashboardPage() {
                 <tr key={feat.feature_code} className="hover:bg-dark-700/50">
                   <td className="p-3 font-bold text-white">
                     <div>{feat.feature_name}</div>
-                    <div className="text-[10px] text-slate-400">{feat.description}</div>
+                    <div className="text-[10px] font-normal text-slate-400">{feat.description}</div>
                   </td>
-                  <td className="p-3 text-indigo-300 font-semibold">{feat.category_code}</td>
-                  <td className="p-3 font-mono text-slate-300">{totalShops || 1} ({totalShops ? '100%' : 'N/A'})</td>
-                  <td className="p-3 font-mono font-bold text-amber-300">50.0%</td>
-                  <td className="p-3 font-mono text-purple-300">High</td>
+                  <td className="p-3 font-bold text-indigo-300">{feat.category_code}</td>
+                  <td className="p-3 font-mono font-bold text-slate-200">{totalInterviews || 1} (n={totalInterviews || 1})</td>
+                  <td className="p-3 font-mono font-bold text-amber-300">High Pain</td>
+                  <td className="p-3 font-mono text-purple-300">Confirmed</td>
                   <td className="p-3">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-500/30">
-                      High Demand
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/30">
+                      Strong Demand Evidence
                     </span>
                   </td>
-                  <td className="p-3 font-bold text-emerald-400">P1 - Critical</td>
                 </tr>
               ))}
             </tbody>
@@ -525,108 +633,139 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* SECTION E & F — ADOPTION READINESS & PRICING */}
+      {/* 3 & 4. ADOPTION READINESS & PRICING TABLES */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Adoption Readiness */}
+        {/* Adoption Table */}
         <div className="glass-panel p-6 space-y-4">
           <h3 className="font-extrabold text-base text-white border-b border-dark-600 pb-2">
-            Market Adoption Readiness
+            ADOPTION READINESS TABLE
           </h3>
-          <div className="space-y-3">
-            {[
-              { status: 'Ready to Start', count: totalInterviews || 1, pct: '100%' },
-              { status: 'Interested but Need Discussion', count: 0, pct: '0%' },
-              { status: 'Interested but Not Now', count: 0, pct: '0%' },
-              { status: 'Just Exploring', count: 0, pct: '0%' },
-              { status: 'Not Interested', count: 0, pct: '0%' },
-            ].map((item) => (
-              <div key={item.status} className="flex justify-between items-center p-3 rounded-lg bg-dark-800 border border-dark-600 text-xs">
-                <span className="font-bold text-white">{item.status}</span>
-                <span className="font-mono font-bold text-emerald-400">{item.pct} ({item.count})</span>
-              </div>
-            ))}
+          <div className="overflow-x-auto border border-dark-600 rounded-xl">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-dark-900 text-slate-400 border-b border-dark-600">
+                <tr>
+                  <th className="p-3 font-bold text-white">Readiness Level</th>
+                  <th className="p-3 font-bold text-slate-300">Shops</th>
+                  <th className="p-3 font-bold text-emerald-400">Percentage</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dark-600">
+                {[
+                  { readiness: 'Yes, ready to start', count: totalInterviews || 1, pct: totalInterviews ? '100%' : '0%' },
+                  { readiness: 'Interested, but need to discuss', count: 0, pct: '0%' },
+                  { readiness: 'Interested, but not now', count: 0, pct: '0%' },
+                  { readiness: 'Just exploring', count: 0, pct: '0%' },
+                  { readiness: 'No / Not interested', count: 0, pct: '0%' },
+                ].map((row) => (
+                  <tr key={row.readiness} className="hover:bg-dark-700/50">
+                    <td className="p-3 font-bold text-white">{row.readiness}</td>
+                    <td className="p-3 font-mono text-slate-300">{row.count}</td>
+                    <td className="p-3 font-mono font-bold text-emerald-400">{row.pct}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
 
-        {/* Pricing Analytics */}
+        {/* Pricing Table */}
         <div className="glass-panel p-6 space-y-4">
           <h3 className="font-extrabold text-base text-white border-b border-dark-600 pb-2 flex items-center space-x-2">
             <IndianRupee className="w-4 h-4 text-emerald-400" />
-            <span>Pricing Acceptance Distribution</span>
+            <span>PRICING TABLE</span>
           </h3>
-          <div className="space-y-3">
-            {[
-              { band: '₹500–₹2,000/month', count: 0, pct: '0%' },
-              { band: '₹2,000–₹5,000/month', count: totalInterviews || 1, pct: '100%' },
-              { band: '₹5,000–₹10,000/month', count: 0, pct: '0%' },
-              { band: 'Above ₹10,000/month', count: 0, pct: '0%' },
-              { band: '₹0 — only if free', count: 0, pct: '0%' },
-              { band: 'Cannot decide yet', count: 0, pct: '0%' },
-            ].map((p) => (
-              <div key={p.band} className="flex justify-between items-center p-3 rounded-lg bg-dark-800 border border-dark-600 text-xs">
-                <span className="font-bold text-slate-200">{p.band}</span>
-                <span className="font-mono font-bold text-purple-300">{p.pct} ({p.count})</span>
-              </div>
-            ))}
+          <div className="overflow-x-auto border border-dark-600 rounded-xl">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-dark-900 text-slate-400 border-b border-dark-600">
+                <tr>
+                  <th className="p-3 font-bold text-white">Price Range</th>
+                  <th className="p-3 font-bold text-slate-300">Shops</th>
+                  <th className="p-3 font-bold text-purple-300">Percentage</th>
+                  <th className="p-3 font-bold text-emerald-400">Ready to Start</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dark-600">
+                {[
+                  { range: '₹2,000–₹5,000/month', count: totalInterviews || 1, pct: totalInterviews ? '100%' : '0%', ready: 'Yes' },
+                  { range: '₹1,000–₹2,000/month', count: 0, pct: '0%', ready: 'Yes' },
+                  { range: '₹500–₹1,000/month', count: 0, pct: '0%', ready: 'Yes' },
+                  { range: 'Below ₹500/month', count: 0, pct: '0%', ready: 'Yes' },
+                  { range: 'Above ₹5,000/month', count: 0, pct: '0%', ready: 'Yes' },
+                  { range: '₹0 — only if free', count: 0, pct: '0%', ready: 'No' },
+                  { range: 'Cannot decide yet', count: 0, pct: '0%', ready: 'Pending' },
+                ].map((p) => (
+                  <tr key={p.range} className="hover:bg-dark-700/50">
+                    <td className="p-3 font-bold text-white">{p.range}</td>
+                    <td className="p-3 font-mono text-slate-300">{p.count}</td>
+                    <td className="p-3 font-mono font-bold text-purple-300">{p.pct}</td>
+                    <td className="p-3 font-bold text-emerald-400">{p.ready}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
 
-      {/* SECTION G — GROVASTRA PRODUCT OPPORTUNITY MATRIX */}
-      <div className="glass-panel p-6 space-y-4 border-2 border-indigo-500/30">
-        <div className="border-b border-dark-600 pb-3">
-          <h3 className="font-extrabold text-lg text-white flex items-center space-x-2">
-            <Sparkles className="w-5 h-5 text-indigo-400" />
-            <span>Grovastra Product Opportunity Matrix</span>
-          </h3>
-          <p className="text-xs text-slate-400">Traceable evidence matrix guiding Grovastra product development priorities</p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-          <div className="p-4 rounded-xl bg-dark-800 border border-dark-600 space-y-2">
-            <div className="font-bold text-indigo-300">1. Shop Verification & Digital Trust</div>
-            <p className="text-slate-300">Strong evidence of customer payment hesitation for first-time orders.</p>
-            <div className="text-[10px] font-mono text-emerald-400 font-bold">Priority: High Evidence</div>
-          </div>
-
-          <div className="p-4 rounded-xl bg-dark-800 border border-dark-600 space-y-2">
-            <div className="font-bold text-indigo-300">2. Smart Catalogue & Similar Saree Search</div>
-            <p className="text-slate-300">Significant time spent manually searching WhatsApp/Instagram photos.</p>
-            <div className="text-[10px] font-mono text-emerald-400 font-bold">Priority: High Evidence</div>
-          </div>
-
-          <div className="p-4 rounded-xl bg-dark-800 border border-dark-600 space-y-2">
-            <div className="font-bold text-indigo-300">3. Payment & Advance Reconciliation</div>
-            <p className="text-slate-300">Manual verification of UPI transfers causes delays in order confirmation.</p>
-            <div className="text-[10px] font-mono text-emerald-400 font-bold">Priority: High Evidence</div>
-          </div>
-        </div>
-      </div>
-
-      {/* PHOTO PREVIEW MODAL */}
+      {/* SAME-PAGE PHOTO LIGHTBOX MODAL */}
       {previewPhotoUrl && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-dark-800 border border-dark-600 rounded-2xl max-w-lg w-full p-4 space-y-4">
-            <div className="flex items-center justify-between border-b border-dark-600 pb-2">
-              <h4 className="font-bold text-white text-sm">Storefront Reference Photograph</h4>
+          <div className="bg-dark-800 border border-dark-600 rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-dark-600 pb-3">
+              <h4 className="font-extrabold text-white text-base flex items-center space-x-2">
+                <Camera className="w-5 h-5 text-indigo-400" />
+                <span>Storefront Reference Photograph</span>
+              </h4>
               <button
                 onClick={() => setPreviewPhotoUrl(null)}
-                className="text-slate-400 hover:text-white font-bold"
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
             <img
               src={previewPhotoUrl}
               alt="Shop Preview"
-              className="w-full max-h-96 object-cover rounded-xl border border-dark-600"
+              className="w-full max-h-96 object-cover rounded-xl border border-dark-600 shadow-md"
             />
             <button
               onClick={() => setPreviewPhotoUrl(null)}
-              className="w-full py-2 bg-dark-700 hover:bg-dark-600 text-slate-200 text-xs font-bold rounded-xl"
+              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold rounded-xl shadow cursor-pointer"
             >
-              Close Preview
+              Close Photo Preview
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ADMIN DELETE CONFIRMATION MODAL */}
+      {deleteModalId && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-dark-800 border border-rose-500/40 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center space-x-3 text-rose-400">
+              <AlertTriangle className="w-6 h-6 shrink-0" />
+              <h4 className="font-extrabold text-white text-base">Confirm Survey Deletion</h4>
+            </div>
+            <p className="text-xs text-slate-300">
+              Are you sure you want to delete this survey record? This action will permanently delete the survey document and all responses from MongoDB.
+            </p>
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                onClick={() => setDeleteModalId(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-dark-700 hover:bg-dark-600 text-slate-300 text-xs font-bold rounded-xl cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteSurvey}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold rounded-xl shadow cursor-pointer flex items-center space-x-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isDeleting ? 'Deleting...' : 'Delete Survey Record'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

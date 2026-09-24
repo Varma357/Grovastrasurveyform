@@ -211,7 +211,6 @@ export default function SurveyPage() {
       if (overallPct >= 50) verdict = 'Significant Opportunity';
       else if (overallPct >= 34) verdict = 'Moderate Opportunity';
 
-      // 1. Save Main & Optional responses
       const responsesPayload = Object.entries(mainResponses).map(([qId, val]) => ({
         question_id: qId,
         selected_option_id: val.optionId,
@@ -228,9 +227,6 @@ export default function SurveyPage() {
         });
       });
 
-      await saveResponses(interviewId, responsesPayload);
-
-      // 2. Save Category scores
       const scoreRows = categorySummaries.map((cs) => ({
         id: crypto.randomUUID(),
         interview_id: interviewId,
@@ -242,27 +238,67 @@ export default function SurveyPage() {
         created_at: new Date().toISOString(),
       }));
 
-      await saveCategoryScores(interviewId, scoreRows);
+      const photoUrl = photoDataUrl || `https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=800&auto=format&fit=crop&q=80`;
 
-      // 3. Save Purchase Intent & Pricing
+      // Save to MongoDB via API Endpoint
+      const res = await fetch('/api/surveys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shop: {
+            ...activeShop,
+            shop_name: shopName,
+            client_name: clientName,
+            location,
+            contact_number: contactNumber,
+            shop_type: shopType,
+            staff_count: Number(staffCount),
+            years_in_business: Number(yearsInBusiness),
+            online_presence: onlinePresence,
+          },
+          interview: {
+            id: interviewId,
+            interviewer_id: currentUser?.id || 'emp-int-01',
+            started_at: new Date(startTime).toISOString(),
+            duration_minutes: durationMinutes,
+            main_completed: true,
+            optional_completed: permissionChoice === 'YES',
+            optional_declined: permissionChoice === 'NO',
+            quick_followup: quickFollowup,
+            overall_score: overallPct,
+            verdict: verdict,
+            is_walkin: isWalkin,
+          },
+          responses: responsesPayload,
+          categoryScores: scoreRows,
+          purchaseIntent: {
+            interest_level: interestLevel,
+            readiness_level: readinessLevel,
+            price_range: priceRange,
+          },
+          photoUrl: photoUrl,
+        }),
+      });
+
+      if (!res.ok) {
+        console.warn('API submission warning, saving to local store');
+      }
+
+      // Also save to local store as backup
+      await saveResponses(interviewId, responsesPayload);
+      await saveCategoryScores(interviewId, scoreRows);
       await savePurchaseIntent(interviewId, {
         interest_level: interestLevel,
         readiness_level: readinessLevel,
         price_range: priceRange,
       });
-
-      // 4. Save Shop Photo
-      const photoUrl = photoDataUrl || `https://mhobqyopenupymciziim.supabase.co/storage/v1/object/public/shop-photos/photo_${activeShop.id}.jpg`;
       await saveShopPhoto(activeShop.id, interviewId, photoUrl);
-
-      // 5. Finalize interview
       await finalizeInterview(interviewId, {
         optionalCompleted: permissionChoice === 'YES',
         optionalDeclined: permissionChoice === 'NO',
         quickFollowup,
       });
 
-      // Attach additional properties locally
       const inv = localStore.interviews.find((i) => i.id === interviewId);
       if (inv) {
         inv.duration_minutes = durationMinutes;
