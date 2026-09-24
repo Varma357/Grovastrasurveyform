@@ -95,19 +95,21 @@ export default function DashboardPage() {
   const totalInterviews = filteredInterviews.length;
 
   // Feature Solution Acceptance (Ready/Interested vs Not Ready)
-  const readyCount = localStore.purchaseIntent.filter((pi) => pi.readiness_level?.includes('Ready') || pi.interest_level?.includes('interested')).length;
+  const readyCount = filteredInterviews.filter(
+    (inv) => inv.verdict === 'Significant Opportunity' || inv.verdict === 'Moderate Opportunity' || inv.status === 'completed'
+  ).length;
   const notReadyCount = Math.max(0, totalInterviews - readyCount);
 
   // Average Overall Score
   const avgOverallScore =
     totalInterviews > 0
       ? Math.round(
-          filteredInterviews.reduce((acc, curr) => acc + (curr.overall_score || 50), 0) / totalInterviews
+          filteredInterviews.reduce((acc, curr) => acc + (curr.overall_score || 65), 0) / totalInterviews
         )
-      : 50;
+      : 65;
 
-  const sigOppCount = localStore.categoryScores.filter((cs) => cs.status === 'Significant Opportunity').length;
-  const sigOppPercentage = localStore.categoryScores.length > 0 ? Math.round((sigOppCount / localStore.categoryScores.length) * 100) : 44;
+  const sigOppCount = filteredInterviews.filter((i) => i.verdict === 'Significant Opportunity').length;
+  const sigOppPercentage = totalInterviews > 0 ? Math.round((sigOppCount / totalInterviews) * 100) : 50;
 
   const towns = Array.from(new Set(shops.map((s) => s.location).filter(Boolean)));
 

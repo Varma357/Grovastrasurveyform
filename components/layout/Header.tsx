@@ -5,17 +5,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useRole } from '../context/RoleContext';
 import { useTheme } from '../context/ThemeContext';
-import { Shield, UserCheck, Sparkles, Sun, Moon, LogOut, LogIn, Users } from 'lucide-react';
-import { UserRole } from '@/lib/types';
+import { Shield, UserCheck, Sparkles, Sun, Moon, LogOut, LogIn } from 'lucide-react';
 
 export function Header() {
   const router = useRouter();
-  const { role, setRole, currentUser, userEmail, logout } = useRole();
+  const { role, currentUser, userEmail, logout } = useRole();
   const { theme, toggleTheme } = useTheme();
-
-  const handleRoleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setRole(e.target.value as UserRole);
-  };
 
   const handleLogout = () => {
     logout();
@@ -25,7 +20,7 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 bg-dark-800/90 backdrop-blur-md border-b border-dark-600 px-4 py-3 flex items-center justify-between">
       {/* Brand logo & title */}
-      <Link href="/dashboard" className="flex items-center space-x-3 group">
+      <Link href={role === 'ADMIN' ? '/dashboard' : '/survey'} className="flex items-center space-x-3 group">
         <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform">
           <Sparkles className="w-6 h-6 text-white" />
         </div>
@@ -42,7 +37,7 @@ export function Header() {
         </div>
       </Link>
 
-      {/* Right controls & Role Switcher */}
+      {/* Right controls */}
       <div className="flex items-center space-x-3">
         {/* Dark / Light Theme Toggle Button */}
         <button
@@ -57,41 +52,36 @@ export function Header() {
           )}
         </button>
 
-        {/* Role Selector */}
-        <div className="flex items-center space-x-2 bg-dark-900 border border-dark-600 px-3 py-1.5 rounded-xl text-xs">
-          {role === 'ADMIN' && <Shield className="w-4 h-4 text-indigo-400 shrink-0" />}
-          {role === 'INTERVIEWER' && <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />}
-
-          <select
-            value={role}
-            onChange={handleRoleChange}
-            className="bg-transparent text-xs font-semibold text-slate-200 focus:outline-none cursor-pointer"
-          >
-            <option value="ADMIN" className="bg-dark-800 text-white">ADMIN</option>
-            <option value="INTERVIEWER" className="bg-dark-800 text-white">INTERVIEWER</option>
-          </select>
-        </div>
-
-        {/* User Profile & Auth Button */}
+        {/* User Profile & Auth Status */}
         {currentUser ? (
-          <div className="flex items-center space-x-2">
-            <div className="hidden md:flex flex-col text-right">
-              <span className="text-xs font-bold text-white">{currentUser.name}</span>
-              <span className="text-[10px] text-slate-400 font-mono">{currentUser.email}</span>
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2 bg-dark-900 border border-dark-600 px-3 py-1.5 rounded-xl text-xs">
+              {role === 'ADMIN' ? (
+                <Shield className="w-4 h-4 text-indigo-400 shrink-0" />
+              ) : (
+                <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+              )}
+              <div className="flex flex-col">
+                <span className="font-bold text-white leading-tight">{currentUser.name}</span>
+                <span className={`text-[9px] font-extrabold uppercase ${role === 'ADMIN' ? 'text-indigo-400' : 'text-emerald-400'}`}>
+                  {role}
+                </span>
+              </div>
             </div>
+
             <button
               onClick={handleLogout}
-              className="p-2 bg-dark-900 hover:bg-rose-950/40 hover:text-rose-400 border border-dark-600 rounded-xl text-xs text-slate-400 flex items-center space-x-1.5 transition-colors"
+              className="p-2.5 bg-dark-900 hover:bg-rose-950/50 hover:text-rose-300 border border-dark-600 hover:border-rose-500/40 rounded-xl text-xs text-slate-300 flex items-center space-x-1.5 transition-all shadow"
               title="Sign Out"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-4 h-4 text-rose-400" />
               <span className="hidden sm:inline font-semibold">Logout</span>
             </button>
           </div>
         ) : (
           <Link
             href="/login"
-            className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-indigo-600/20"
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-indigo-600/20"
           >
             <LogIn className="w-4 h-4" />
             <span>Sign In</span>
