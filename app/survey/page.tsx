@@ -264,6 +264,7 @@ export default function SurveyPage() {
             main_completed: true,
             optional_completed: permissionChoice === 'YES',
             optional_declined: permissionChoice === 'NO',
+            further_questions_allowed: permissionChoice === 'YES',
             quick_followup: quickFollowup,
             overall_score: overallPct,
             verdict: verdict,
@@ -561,33 +562,25 @@ export default function SurveyPage() {
           </div>
 
           <div className="bg-dark-900 border border-indigo-500/50 p-6 rounded-2xl space-y-4 text-center">
-            <h4 className="text-lg font-bold text-indigo-300">Client Additional Exploration Request</h4>
-            <p className="text-sm text-slate-200 max-w-xl mx-auto leading-relaxed">
-              "We have completed the core survey. Based on your responses, we found a few areas where your current business process may have opportunities for improvement. Would you be interested in answering a few additional questions about these areas?"
+            <h4 className="text-lg font-bold text-indigo-300">Client Further Questions Permission</h4>
+            <p className="text-base font-bold text-white max-w-xl mx-auto leading-relaxed">
+              "Can I ask you a few more questions to understand your shop's current process better?"
             </p>
 
-            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
               <button
                 onClick={() => handlePermissionDecision('YES', false)}
-                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded-xl shadow-lg shadow-indigo-600/30 text-sm flex items-center justify-center space-x-2"
+                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold py-3.5 px-8 rounded-xl shadow-lg shadow-indigo-600/30 text-sm flex items-center justify-center space-x-2 cursor-pointer"
               >
                 <CheckCircle2 className="w-5 h-5 text-emerald-300" />
-                <span>[ YES, I HAVE TIME ]</span>
-              </button>
-
-              <button
-                onClick={() => handlePermissionDecision('YES', true)}
-                className="w-full sm:w-auto bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 px-6 rounded-xl shadow-lg text-sm flex items-center justify-center space-x-2"
-              >
-                <Zap className="w-5 h-5 text-amber-300" />
-                <span>[ QUICK FOLLOW-UP ]</span>
+                <span>YES, I HAVE TIME</span>
               </button>
 
               <button
                 onClick={() => handlePermissionDecision('NO', false)}
-                className="w-full sm:w-auto bg-dark-700 hover:bg-dark-600 text-slate-300 font-bold py-3 px-6 rounded-xl text-sm"
+                className="w-full sm:w-auto bg-dark-700 hover:bg-dark-600 text-slate-200 font-extrabold py-3.5 px-8 rounded-xl border border-dark-600 text-sm cursor-pointer"
               >
-                <span>[ NO, THAT'S ALL FOR TODAY ]</span>
+                <span>NO, THAT'S ALL</span>
               </button>
             </div>
           </div>

@@ -72,7 +72,6 @@ export default function DashboardPage() {
         if (data.interviews) {
           setInterviews(data.interviews);
           const shopList = data.interviews.map((inv: any) => inv.shop).filter(Boolean);
-          // Deduplicate shops
           const uniqueShops = Array.from(new Map(shopList.map((s: any) => [s.id, s])).values());
           setShops(uniqueShops);
         }
@@ -167,7 +166,7 @@ export default function DashboardPage() {
     );
   };
 
-  // Export Survey Records CSV
+  // Export Main Survey Records CSV
   const exportSurveyRecordsCSV = () => {
     const data = filteredInterviews.map((inv, idx) => {
       const photoUrl = inv.photo_url || inv.photo?.photo_url || 'No Photo';
@@ -182,6 +181,7 @@ export default function DashboardPage() {
         Duration_Mins: inv.duration_minutes || 15,
         Overall_Score: `${inv.overall_score || 0}%`,
         Verdict: inv.verdict || 'Moderate Opportunity',
+        Survey_Type: inv.optional_completed ? 'Main + Conditional' : 'Main Only',
         Walkin: inv.is_walkin !== false ? 'Yes' : 'No',
       };
 
@@ -195,6 +195,80 @@ export default function DashboardPage() {
     });
 
     generateCSV(data, 'Grovastra_Survey_Records');
+  };
+
+  // 1. Export Category Analysis CSV
+  const exportCategoryAnalysisCSV = () => {
+    const data = SEED_CATEGORIES.map((cat) => {
+      let catTotalPct = 0;
+      let catCount = 0;
+      let strongCount = 0;
+      let modCount = 0;
+      let sigCount = 0;
+      let conditionalFollowups = 0;
+
+      filteredInterviews.forEach((inv) => {
+        const sc = getCategoryScoreObj(inv, cat.category_code);
+        if (sc) {
+          catTotalPct += sc.percentage || 0;
+          catCount++;
+          if (sc.status === 'Significant Opportunity') sigCount++;
+          else if (sc.status === 'Moderate Opportunity') modCount++;
+          else strongCount++;
+        }
+        if (inv.optional_completed) {
+          conditionalFollowups++;
+        }
+      });
+
+      const sampleN = catCount || filteredInterviews.length;
+      const avgPct = sampleN > 0 ? Math.round(catTotalPct / sampleN) : 0;
+      const avgScore = ((avgPct / 100) * 3).toFixed(1);
+
+      const strongPct = sampleN > 0 ? Math.round((strongCount / sampleN) * 100) : 0;
+      const modPct = sampleN > 0 ? Math.round((modCount / sampleN) * 100) : 0;
+      const sigPct = sampleN > 0 ? Math.round((sigCount / sampleN) * 100) : 0;
+
+      return {
+        Category: cat.category_name,
+        Shops: sampleN,
+        'Average Score': `${avgScore} / 3`,
+        'Opportunity %': `${avgPct}%`,
+        Strong: `${strongCount} (${strongPct}%)`,
+        Moderate: `${modCount} (${modPct}%)`,
+        'Significant Opportunity': `${sigCount} (${sigPct}%)`,
+        'Conditional Follow-ups': conditionalFollowups,
+      };
+    });
+
+    generateCSV(data, 'Grovastra_Category_Analysis');
+  };
+
+  // 2. Export Feature Demand CSV
+  const exportFeatureDemandCSV = () => {
+    const data = SEED_FEATURES.map((feat) => {
+      const totalN = filteredInterviews.length;
+      const affectedCount = filteredInterviews.filter((inv) => {
+        const sc = getCategoryScoreObj(inv, feat.category_code);
+        return sc && sc.percentage >= 34;
+      }).length;
+
+      const affectedPct = totalN > 0 ? Math.round((affectedCount / totalN) * 100) : 0;
+      const painSignal = affectedPct >= 50 ? 'High Pain' : affectedPct >= 25 ? 'Moderate Pain' : 'Low Pain';
+      const conditionalSignal = filteredInterviews.some((i) => i.optional_completed) ? 'High' : 'Moderate';
+      const evidence = affectedPct >= 50 ? 'Strong Demand Evidence' : 'Moderate Evidence';
+
+      return {
+        Feature: feat.feature_name,
+        Category: feat.category_code,
+        'Shops Affected': `${affectedCount} (n=${totalN})`,
+        'Pain Signal': `${affectedPct}% (${painSignal})`,
+        'Conditional Signal': conditionalSignal,
+        Evidence: evidence,
+      };
+    });
+
+    generateCSV(data, 'Grovastra_Feature_Demand');
   };
 
   const handleWhatsAppShare = (inv: any) => {
@@ -286,7 +360,7 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
           <div>
             <h3 className="font-extrabold text-lg text-white">Survey Records Table</h3>
             <p className="text-xs text-slate-400">
-              {filteredInterviews.length} survey(s) stored in MongoDB — scroll horizontally for all category scores
+              {filteredInterviews.length} survey(s) stored in MongoDB — scroll horizontally for category scores
             </p>
           </div>
 
@@ -357,6 +431,7 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
                 <th className="p-3 font-extrabold text-slate-300">Duration</th>
                 <th className="p-3 font-extrabold text-slate-300">Overall Score</th>
                 <th className="p-3 font-extrabold text-slate-300">Verdict</th>
+                <th className="p-3 font-extrabold text-slate-300">Survey Type</th>
                 <th className="p-3 font-extrabold text-slate-300">Walk-in?</th>
 
                 {/* 9 Category Columns with uppercase names */}
@@ -379,6 +454,7 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
                 paginatedInterviews.map((inv, idx) => {
                   const actualIdx = (currentPage - 1) * pageSize + idx + 1;
                   const photoUrl = inv.photo_url || inv.photo?.photo_url;
+                  const isMainAndConditional = !!inv.optional_completed;
 
                   return (
                     <tr key={inv.id} className="hover:bg-dark-700/50">
@@ -404,6 +480,20 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
                           {inv.verdict || 'Moderate Opportunity'}
                         </span>
                       </td>
+
+                      {/* Survey Type Column */}
+                      <td className="p-3">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            isMainAndConditional
+                              ? 'bg-purple-950 text-purple-300 border border-purple-500/30'
+                              : 'bg-indigo-950 text-indigo-300 border border-indigo-500/30'
+                          }`}
+                        >
+                          {isMainAndConditional ? 'Main + Conditional' : 'Main Only'}
+                        </span>
+                      </td>
+
                       <td className="p-3 text-slate-300">{inv.is_walkin !== false ? 'Yes' : 'No'}</td>
 
                       {/* 9 Category Score Pill Cells */}
@@ -431,7 +521,7 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
                         );
                       })}
 
-                      {/* Shop Photo Column with Same-Page Modal Trigger */}
+                      {/* Shop Photo Column */}
                       <td className="p-3">
                         {photoUrl ? (
                           <button
@@ -481,7 +571,7 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
                 })
               ) : (
                 <tr>
-                  <td colSpan={20} className="p-8 text-center text-slate-400 italic">
+                  <td colSpan={22} className="p-8 text-center text-slate-400 italic">
                     No survey records found in MongoDB.
                   </td>
                 </tr>
@@ -518,16 +608,24 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
 
       {/* DASHBOARD TABLE ANALYTICS SECTION */}
 
-      {/* 1. CATEGORY ANALYSIS TABLE */}
+      {/* 1. CATEGORY ANALYSIS TABLE WITH CSV DOWNLOAD BUTTON */}
       <div className="glass-panel p-6 space-y-4">
-        <div className="flex items-center justify-between border-b border-dark-600 pb-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-dark-600 pb-3">
           <div>
             <h3 className="font-extrabold text-lg text-white flex items-center space-x-2">
               <AlertTriangle className="w-5 h-5 text-amber-400" />
               <span>CATEGORY ANALYSIS TABLE</span>
             </h3>
-            <p className="text-xs text-slate-400">Opportunity scores across all 9 saree shop categories</p>
+            <p className="text-xs text-slate-400">Opportunity scores across all 9 saree shop categories calculated from main questions</p>
           </div>
+
+          <button
+            onClick={exportCategoryAnalysisCSV}
+            className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-lg shadow-emerald-600/30 cursor-pointer shrink-0"
+          >
+            <Download className="w-4 h-4" />
+            <span>Download CSV</span>
+          </button>
         </div>
 
         <div className="overflow-x-auto border border-dark-600 rounded-xl">
@@ -540,17 +638,18 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
                 <th className="p-3 font-extrabold text-slate-300">Opportunity %</th>
                 <th className="p-3 font-extrabold text-emerald-400">Strong</th>
                 <th className="p-3 font-extrabold text-amber-400">Moderate</th>
-                <th className="p-3 font-extrabold text-rose-400">Significant</th>
+                <th className="p-3 font-extrabold text-rose-400">Significant Opportunity</th>
+                <th className="p-3 font-extrabold text-purple-300">Conditional Follow-ups</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-dark-600">
               {SEED_CATEGORIES.map((cat) => {
-                // Calculate real metrics from interviews
                 let catTotalPct = 0;
                 let catCount = 0;
                 let strongCount = 0;
                 let modCount = 0;
                 let sigCount = 0;
+                let conditionalFollowups = 0;
 
                 filteredInterviews.forEach((inv) => {
                   const sc = getCategoryScoreObj(inv, cat.category_code);
@@ -561,10 +660,13 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
                     else if (sc.status === 'Moderate Opportunity') modCount++;
                     else strongCount++;
                   }
+                  if (inv.optional_completed) {
+                    conditionalFollowups++;
+                  }
                 });
 
-                const avgPct = catCount > 0 ? Math.round(catTotalPct / catCount) : 0;
-                const sampleN = catCount || totalInterviews;
+                const sampleN = catCount || filteredInterviews.length;
+                const avgPct = sampleN > 0 ? Math.round(catTotalPct / sampleN) : 0;
 
                 return (
                   <tr key={cat.category_code} className="hover:bg-dark-700/50">
@@ -578,6 +680,7 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
                     <td className="p-3 font-mono text-emerald-400 font-bold">{strongCount} ({sampleN ? Math.round((strongCount/sampleN)*100) : 0}%)</td>
                     <td className="p-3 font-mono text-amber-400 font-bold">{modCount} ({sampleN ? Math.round((modCount/sampleN)*100) : 0}%)</td>
                     <td className="p-3 font-mono text-rose-400 font-bold">{sigCount} ({sampleN ? Math.round((sigCount/sampleN)*100) : 0}%)</td>
+                    <td className="p-3 font-mono text-purple-300 font-bold">{conditionalFollowups}</td>
                   </tr>
                 );
               })}
@@ -586,16 +689,24 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
         </div>
       </div>
 
-      {/* 2. FEATURE DEMAND TABLE */}
+      {/* 2. FEATURE DEMAND TABLE WITH CSV DOWNLOAD BUTTON */}
       <div className="glass-panel p-6 space-y-4">
-        <div className="flex items-center justify-between border-b border-dark-600 pb-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-dark-600 pb-3">
           <div>
             <h3 className="font-extrabold text-lg text-white flex items-center space-x-2">
               <TrendingUp className="w-5 h-5 text-indigo-400" />
               <span>FEATURE DEMAND TABLE</span>
             </h3>
-            <p className="text-xs text-slate-400">Demand evidence calculated from actual survey responses and mapped questions</p>
+            <p className="text-xs text-slate-400">Demand evidence calculated from main & conditional survey responses in MongoDB</p>
           </div>
+
+          <button
+            onClick={exportFeatureDemandCSV}
+            className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-lg shadow-emerald-600/30 cursor-pointer shrink-0"
+          >
+            <Download className="w-4 h-4" />
+            <span>Download CSV</span>
+          </button>
         </div>
 
         <div className="overflow-x-auto border border-dark-600 rounded-xl">
@@ -611,23 +722,37 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
               </tr>
             </thead>
             <tbody className="divide-y divide-dark-600">
-              {SEED_FEATURES.slice(0, 10).map((feat) => (
-                <tr key={feat.feature_code} className="hover:bg-dark-700/50">
-                  <td className="p-3 font-bold text-white">
-                    <div>{feat.feature_name}</div>
-                    <div className="text-[10px] font-normal text-slate-400">{feat.description}</div>
-                  </td>
-                  <td className="p-3 font-bold text-indigo-300">{feat.category_code}</td>
-                  <td className="p-3 font-mono font-bold text-slate-200">{totalInterviews || 1} (n={totalInterviews || 1})</td>
-                  <td className="p-3 font-mono font-bold text-amber-300">High Pain</td>
-                  <td className="p-3 font-mono text-purple-300">Confirmed</td>
-                  <td className="p-3">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/30">
-                      Strong Demand Evidence
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {SEED_FEATURES.slice(0, 10).map((feat) => {
+                const totalN = filteredInterviews.length;
+                const affectedCount = filteredInterviews.filter((inv) => {
+                  const sc = getCategoryScoreObj(inv, feat.category_code);
+                  return sc && sc.percentage >= 34;
+                }).length;
+
+                const affectedPct = totalN > 0 ? Math.round((affectedCount / totalN) * 100) : 0;
+                const painSignal = affectedPct >= 50 ? 'High Pain' : affectedPct >= 25 ? 'Moderate Pain' : 'Low Pain';
+                const hasConditional = filteredInterviews.some((i) => i.optional_completed);
+                const conditionalSignal = hasConditional ? 'High' : 'Moderate';
+                const evidence = affectedPct >= 50 ? 'Strong Demand Evidence' : 'Moderate Evidence';
+
+                return (
+                  <tr key={feat.feature_code} className="hover:bg-dark-700/50">
+                    <td className="p-3 font-bold text-white">
+                      <div>{feat.feature_name}</div>
+                      <div className="text-[10px] font-normal text-slate-400">{feat.description}</div>
+                    </td>
+                    <td className="p-3 font-bold text-indigo-300">{feat.category_code}</td>
+                    <td className="p-3 font-mono font-bold text-slate-200">{affectedCount} (n={totalN || 1})</td>
+                    <td className="p-3 font-mono font-bold text-amber-300">{affectedPct}% ({painSignal})</td>
+                    <td className="p-3 font-mono text-purple-300">{conditionalSignal}</td>
+                    <td className="p-3">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/30">
+                        {evidence}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

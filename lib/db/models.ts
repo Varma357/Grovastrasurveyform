@@ -116,6 +116,7 @@ export interface IInterviewDocument extends Document {
   main_completed: boolean;
   optional_completed: boolean;
   optional_declined: boolean;
+  further_questions_allowed?: boolean;
   quick_followup: boolean;
   status: 'draft' | 'main_completed' | 'completed';
   overall_score?: number;
@@ -137,6 +138,7 @@ const InterviewSchema = new Schema<IInterviewDocument>(
     main_completed: { type: Boolean, default: false },
     optional_completed: { type: Boolean, default: false },
     optional_declined: { type: Boolean, default: false },
+    further_questions_allowed: { type: Boolean, default: false },
     quick_followup: { type: Boolean, default: false },
     status: { type: String, enum: ['draft', 'main_completed', 'completed'], default: 'draft' },
     overall_score: { type: Number },

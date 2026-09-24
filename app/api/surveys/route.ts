@@ -115,6 +115,7 @@ export async function POST(request: Request) {
       main_completed: true,
       optional_completed: !!interview.optional_completed,
       optional_declined: !!interview.optional_declined,
+      further_questions_allowed: interview.further_questions_allowed !== undefined ? !!interview.further_questions_allowed : !!interview.optional_completed,
       quick_followup: !!interview.quick_followup,
       status: 'completed',
       overall_score: Number(interview.overall_score) || 50,
