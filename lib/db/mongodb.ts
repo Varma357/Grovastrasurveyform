@@ -1,4 +1,12 @@
 import mongoose from 'mongoose';
+import dns from 'node:dns';
+
+// DNS SRV resolution for local Windows development environments
+if (typeof window === 'undefined' && process.platform === 'win32') {
+  try {
+    dns.setServers(['8.8.8.8', '1.1.1.1']);
+  } catch (e) {}
+}
 
 const MONGODB_URI =
   process.env.MONGODB_URI ||
@@ -28,17 +36,20 @@ export async function connectToDatabase(): Promise<typeof mongoose> {
   if (!cached.promise) {
     const opts = {
       bufferCommands: false,
-      serverSelectionTimeoutMS: 10000,
+      serverSelectionTimeoutMS: 15000,
     };
 
-    cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongooseInstance) => {
-      console.log('✅ Connected to MongoDB Production Cluster');
-      return mongooseInstance;
-    }).catch((err) => {
-      console.error('❌ MongoDB Connection Error:', err);
-      cached.promise = null;
-      throw err;
-    });
+    cached.promise = mongoose
+      .connect(MONGODB_URI, opts)
+      .then((mongooseInstance) => {
+        console.log('✅ Connected to MongoDB Production Cluster');
+        return mongooseInstance;
+      })
+      .catch((err) => {
+        console.error('❌ MongoDB Connection Error:', err);
+        cached.promise = null;
+        throw err;
+      });
   }
 
   try {

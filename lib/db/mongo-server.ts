@@ -207,7 +207,13 @@ export async function getAllInterviewsMongo(): Promise<Interview[]> {
 
 export async function getInterviewByIdMongo(interviewId: string) {
   const interviews = await getAllInterviewsMongo();
-  const inv = interviews.find((i) => i.id === interviewId || i.interview_code === interviewId);
+  const inv = interviews.find(
+    (i) =>
+      i.id === interviewId ||
+      i.interview_code === interviewId ||
+      i.shop_id === interviewId ||
+      i.shop?.shop_code === interviewId
+  );
   if (!inv) return null;
 
   const responsesDocs = await SurveyResponseModel.find({ interview_id: inv.id }).lean();

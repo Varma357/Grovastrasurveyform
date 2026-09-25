@@ -321,7 +321,6 @@ const CategoryScoreSchema = new Schema<ICategoryScoreDocument>(
     percentage: { type: Number, required: true },
     status: {
       type: String,
-      enum: ['Strong Current Process', 'Moderate Opportunity', 'Significant Opportunity'],
       required: true,
     },
     created_at: { type: String, default: () => new Date().toISOString() },

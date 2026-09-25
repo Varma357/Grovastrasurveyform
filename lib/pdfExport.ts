@@ -18,6 +18,7 @@ export async function exportElementToPDF(elementId: string, filename: string): P
     const canvas = await html2canvas(element, {
       scale: 2,
       useCORS: true,
+      allowTaint: true,
       logging: false,
       backgroundColor: '#0f172a',
       windowWidth: element.scrollWidth,
@@ -54,6 +55,7 @@ export async function exportElementToPDF(elementId: string, filename: string): P
   } catch (error) {
     element.style.cssText = originalStyle;
     console.error('PDF Generation Error:', error);
+    alert('Failed to generate PDF. You can also use Print Report -> Save as PDF.');
     return null;
   }
 }
@@ -72,6 +74,7 @@ export async function sharePDFReport(elementId: string, filename: string, summar
     const canvas = await html2canvas(element, {
       scale: 2,
       useCORS: true,
+      allowTaint: true,
       logging: false,
       backgroundColor: '#0f172a',
       windowWidth: element.scrollWidth,
@@ -106,14 +109,19 @@ export async function sharePDFReport(elementId: string, filename: string, summar
     const pdfBlob = pdf.output('blob');
     const pdfFile = new File([pdfBlob], `${filename}.pdf`, { type: 'application/pdf' });
 
-    // Download PDF document automatically
+    // Save PDF file locally
     pdf.save(`${filename}.pdf`);
 
-    // Web Share API if supported (e.g. mobile Chrome/Safari/Edge)
-    if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+    // Web Share API if supported
+    if (
+      typeof navigator !== 'undefined' &&
+      navigator.share &&
+      navigator.canShare &&
+      navigator.canShare({ files: [pdfFile] })
+    ) {
       try {
         await navigator.share({
-          title: 'Grovastra Executive PDF Report',
+          title: 'Grovastra Discovery PDF Report',
           text: summaryText,
           files: [pdfFile],
         });
@@ -123,7 +131,7 @@ export async function sharePDFReport(elementId: string, filename: string, summar
       }
     }
 
-    // Fallback: Open WhatsApp Web / App with link message pointing out PDF is downloaded
+    // Fallback to WhatsApp link share
     const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(
       summaryText + '\n\n📄 [Official PDF Report document generated and saved to downloads]'
     )}`;
@@ -131,5 +139,8 @@ export async function sharePDFReport(elementId: string, filename: string, summar
   } catch (err) {
     element.style.cssText = originalStyle;
     console.error('Error sharing PDF:', err);
+    // Fallback to WhatsApp link share without canvas
+    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(summaryText)}`;
+    window.open(waUrl, '_blank');
   }
 }

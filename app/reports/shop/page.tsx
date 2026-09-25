@@ -2,7 +2,23 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Printer, Share2, Store, CheckCircle2, ShieldCheck, MapPin, Calendar, Clock, Sparkles, Download, Camera, X } from 'lucide-react';
+import {
+  Printer,
+  Share2,
+  Store,
+  CheckCircle2,
+  ShieldCheck,
+  MapPin,
+  Calendar,
+  Clock,
+  Sparkles,
+  Download,
+  Camera,
+  X,
+  Copy,
+  Check,
+  Link as LinkIcon,
+} from 'lucide-react';
 import { exportElementToPDF, sharePDFReport } from '@/lib/pdfExport';
 import { SEED_CATEGORIES } from '@/lib/seed/data';
 
@@ -12,6 +28,7 @@ function ShopReportContent() {
   const [reportData, setReportData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   useEffect(() => {
     loadReport();
@@ -68,6 +85,18 @@ function ShopReportContent() {
   const overallScore = interview?.overall_score ?? 65;
   const verdict = interview?.verdict || 'Moderate Opportunity';
 
+  const reportId = interview?.id || shop?.id || id || '';
+  const shareableUrl = typeof window !== 'undefined' ? `${window.location.origin}/reports/shop?id=${reportId}` : '';
+
+  const handleCopyLink = () => {
+    if (typeof window !== 'undefined') {
+      const url = `${window.location.origin}/reports/shop?id=${reportId}`;
+      navigator.clipboard.writeText(url);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 3000);
+    }
+  };
+
   const getCategoryName = (catId: string) => {
     const catCode = catId.replace('cat-', '').toUpperCase();
     const found = SEED_CATEGORIES.find(
@@ -93,6 +122,9 @@ function ShopReportContent() {
 📋 *CATEGORY CAPABILITY BREAKDOWN:*
 ${categoryLines}
 
+🔗 *VIEW ONLINE REPORT LINK:*
+${shareableUrl}
+
 💡 *RECOMMENDED AREAS WORTH EXPLORING:*
 1. Digital Cataloguing & WhatsApp shareable product links for remote buyers.
 2. Verified Shop Identity Badge to establish trust with first-time UPI buyers.
@@ -111,13 +143,21 @@ ${categoryLines}
           <p className="text-xs text-slate-400">Client-facing operational report & exploration summary</p>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={handleCopyLink}
+            className="px-3.5 py-2 bg-dark-700 hover:bg-dark-600 text-indigo-300 rounded-xl text-xs font-bold flex items-center space-x-1.5 cursor-pointer border border-indigo-500/30 transition-all"
+          >
+            {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-indigo-400" />}
+            <span>{copiedLink ? 'Link Copied!' : 'Copy Report Link'}</span>
+          </button>
+
           <button
             onClick={() => window.print()}
             className="px-3.5 py-2 bg-dark-700 hover:bg-dark-600 text-slate-200 rounded-xl text-xs font-bold flex items-center space-x-1.5 cursor-pointer border border-dark-600"
           >
             <Printer className="w-4 h-4 text-slate-400" />
-            <span>Print Report</span>
+            <span>Print</span>
           </button>
 
           <button

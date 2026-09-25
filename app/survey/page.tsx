@@ -282,7 +282,10 @@ export default function SurveyPage() {
       });
 
       if (!res.ok) {
-        console.warn('API submission warning, saving to local store');
+        const errJson = await res.json().catch(() => ({}));
+        console.error('❌ MongoDB API submission failed:', errJson);
+      } else {
+        console.log('✅ MongoDB API submission successful');
       }
 
       // Also save to local store as backup

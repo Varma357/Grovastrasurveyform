@@ -24,7 +24,11 @@ export async function GET(request: Request) {
     const interviewers = await InterviewerModel.find({}).lean();
     const employees = await EmployeeModel.find({}).lean();
 
-    const shopMap = new Map(shops.map((s: any) => [s.id, s]));
+    const shopMap = new Map();
+    shops.forEach((s: any) => {
+      if (s.id) shopMap.set(s.id, s);
+      if (s.shop_id) shopMap.set(s.shop_id, s);
+    });
     const photoMap = new Map(photos.map((p: any) => [p.interview_id, p]));
     const intentMap = new Map(intents.map((pi: any) => [pi.interview_id, pi]));
 
