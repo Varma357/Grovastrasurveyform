@@ -186,7 +186,33 @@ export default function SurveyPage() {
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setPhotoDataUrl(reader.result as string);
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const maxDim = 1000;
+          let width = img.width;
+          let height = img.height;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressed = canvas.toDataURL('image/jpeg', 0.75);
+            setPhotoDataUrl(compressed);
+          } else {
+            setPhotoDataUrl(reader.result as string);
+          }
+        };
+        img.src = reader.result as string;
       };
       reader.readAsDataURL(file);
     }
@@ -289,7 +315,7 @@ export default function SurveyPage() {
       if (existingInvIdx >= 0) localStore.interviews[existingInvIdx] = fullInterview;
       else localStore.interviews.unshift(fullInterview);
 
-      // Save to MongoDB via API Endpoint
+      // Save to Supabase PostgreSQL via API Endpoint
       const res = await fetch('/api/surveys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -309,9 +335,9 @@ export default function SurveyPage() {
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        console.error('❌ MongoDB API submission failed:', errJson);
+        console.error('❌ Supabase API submission failed:', errJson);
       } else {
-        console.log('✅ MongoDB API submission successful');
+        console.log('✅ Supabase API submission successful');
       }
 
       // Route directly to the instant Shop Discovery Report

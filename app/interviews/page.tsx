@@ -29,7 +29,9 @@ export default function InterviewsPage() {
   const loadInterviews = async () => {
     if (localStore.interviews.length > 0) {
       setInterviews(localStore.interviews);
-      handleSelectInterview(localStore.interviews[0].id);
+      if (!selectedId) {
+        handleSelectInterview(localStore.interviews[0].id);
+      }
       setIsLoading(false);
     } else {
       setIsLoading(true);
@@ -41,16 +43,15 @@ export default function InterviewsPage() {
         const data = await res.json();
         if (data.interviews && data.interviews.length > 0) {
           setInterviews(data.interviews);
-          if (!selectedId) {
-            handleSelectInterview(data.interviews[0].id);
-          }
+          const targetId = selectedId || data.interviews[0].id;
+          handleSelectInterview(targetId);
         } else if (localStore.interviews.length === 0) {
           setInterviews([]);
           setReportData(null);
         }
       }
     } catch (err) {
-      console.error('Failed to fetch interviews from MongoDB:', err);
+      console.error('Failed to fetch interviews from Supabase:', err);
     } finally {
       setIsLoading(false);
     }
@@ -150,7 +151,7 @@ export default function InterviewsPage() {
             ))
           ) : (
             <div className="p-6 text-center text-slate-400 text-xs italic">
-              {isLoading ? 'Loading records from MongoDB...' : 'No completed survey records found.'}
+              {isLoading ? 'Loading records from Supabase...' : 'No completed survey records found.'}
             </div>
           )}
         </div>

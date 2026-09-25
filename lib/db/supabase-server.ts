@@ -297,27 +297,29 @@ export async function getAllInterviewsSupabase(): Promise<Interview[]> {
     .select('*')
     .order('created_at', { ascending: false });
 
-  if (invErr || !invs) return [];
+  if (invErr || !invs || invs.length === 0) return [];
 
-  const { data: shops } = await supabaseAdmin.from('shops').select('*');
-  const { data: interviewers } = await supabaseAdmin.from('interviewers').select('*');
-  const { data: photos } = await supabaseAdmin.from('shop_photos').select('*');
-  const { data: scores } = await supabaseAdmin.from('category_scores').select('*');
-  const { data: intents } = await supabaseAdmin.from('purchase_intent').select('*');
+  const [shopsRes, intRes, photosRes, scoresRes, intentsRes] = await Promise.all([
+    supabaseAdmin.from('shops').select('*'),
+    supabaseAdmin.from('interviewers').select('*'),
+    supabaseAdmin.from('shop_photos').select('*'),
+    supabaseAdmin.from('category_scores').select('*'),
+    supabaseAdmin.from('purchase_intent').select('*'),
+  ]);
 
-  const shopMap = new Map((shops || []).map((s: any) => [s.id, s]));
-  const intMap = new Map((interviewers || []).map((i: any) => [i.id, i]));
-  const photoMap = new Map((photos || []).map((p: any) => [p.interview_id, p]));
-  const intentMap = new Map((intents || []).map((pi: any) => [pi.interview_id, pi]));
+  const shopMap = new Map((shopsRes.data || []).map((s: any) => [s.id, s]));
+  const intMap = new Map((intRes.data || []).map((i: any) => [i.id, i]));
+  const photoMap = new Map((photosRes.data || []).map((p: any) => [p.interview_id, p]));
+  const intentMap = new Map((intentsRes.data || []).map((pi: any) => [pi.interview_id, pi]));
 
   return invs.map((inv: any) => {
-    const invScores = (scores || []).filter((sc: any) => sc.interview_id === inv.id);
+    const invScores = (scoresRes.data || []).filter((sc: any) => sc.interview_id === inv.id);
     const photoObj = photoMap.get(inv.id);
 
     return {
       ...inv,
       shop: shopMap.get(inv.shop_id),
-      interviewer: intMap.get(inv.interviewer_id) || { id: 'default', name: 'Field Lead Interviewer' },
+      interviewer: intMap.get(inv.interviewer_id) || { id: 'default', name: 'Navadeep' },
       categoryScores: invScores,
       purchaseIntent: intentMap.get(inv.id),
       photo_url: inv.photo_url || photoObj?.photo_url || null,
@@ -327,44 +329,73 @@ export async function getAllInterviewsSupabase(): Promise<Interview[]> {
 }
 
 export async function getInterviewByIdSupabase(interviewId: string) {
-  const interviews = await getAllInterviewsSupabase();
-  const inv = interviews.find(
-    (i: any) =>
-      i.id === interviewId ||
-      i.interview_code === interviewId ||
-      i.shop_id === interviewId ||
-      i.shop?.shop_code === interviewId
-  );
+  await ensureSupabaseReady();
+
+  // 1. Fetch single matching interview directly from PostgreSQL
+  const { data: invDocs } = await supabaseAdmin
+    .from('interviews')
+    .select('*')
+    .or(`id.eq.${interviewId},interview_code.eq.${interviewId},shop_id.eq.${interviewId}`)
+    .limit(1);
+
+  let inv = invDocs && invDocs.length > 0 ? invDocs[0] : null;
+
+  if (!inv) {
+    // Fallback: check if matching by shop_code or shop ID
+    const { data: shopMatch } = await supabaseAdmin
+      .from('shops')
+      .select('id')
+      .or(`id.eq.${interviewId},shop_code.eq.${interviewId}`)
+      .limit(1);
+
+    if (shopMatch && shopMatch.length > 0) {
+      const { data: invByShop } = await supabaseAdmin
+        .from('interviews')
+        .select('*')
+        .eq('shop_id', shopMatch[0].id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (invByShop && invByShop.length > 0) inv = invByShop[0];
+    }
+  }
+
   if (!inv) return null;
 
-  const { data: responses } = await supabaseAdmin
-    .from('responses')
-    .select('*')
-    .eq('interview_id', inv.id);
+  // 2. Fetch associated relations in parallel
+  const [shopRes, intRes, respRes, scoreRes, intentRes, photoRes] = await Promise.all([
+    supabaseAdmin.from('shops').select('*').eq('id', inv.shop_id).maybeSingle(),
+    supabaseAdmin.from('interviewers').select('*').eq('id', inv.interviewer_id || 'emp-int-01').maybeSingle(),
+    supabaseAdmin.from('responses').select('*').eq('interview_id', inv.id),
+    supabaseAdmin.from('category_scores').select('*').eq('interview_id', inv.id),
+    supabaseAdmin.from('purchase_intent').select('*').eq('interview_id', inv.id),
+    supabaseAdmin.from('shop_photos').select('*').eq('interview_id', inv.id),
+  ]);
 
-  const { data: categoryScores } = await supabaseAdmin
-    .from('category_scores')
-    .select('*')
-    .eq('interview_id', inv.id);
+  const shop = shopRes.data || { id: inv.shop_id, shop_name: 'Saree Shop', location: 'AP' };
+  const interviewer = intRes.data || { id: inv.interviewer_id || 'emp-int-01', name: 'Navadeep' };
+  const responses = respRes.data || [];
+  const categoryScores = scoreRes.data || [];
+  const purchaseIntent = intentRes.data && intentRes.data.length > 0 ? intentRes.data[0] : null;
+  const photo = photoRes.data && photoRes.data.length > 0 ? photoRes.data[0] : (inv.photo_url ? { photo_url: inv.photo_url } : null);
 
-  const { data: intentDocs } = await supabaseAdmin
-    .from('purchase_intent')
-    .select('*')
-    .eq('interview_id', inv.id);
-
-  const { data: photoDocs } = await supabaseAdmin
-    .from('shop_photos')
-    .select('*')
-    .eq('interview_id', inv.id);
+  const fullInterview = {
+    ...inv,
+    shop,
+    interviewer,
+    categoryScores,
+    purchaseIntent,
+    photo_url: inv.photo_url || photo?.photo_url || null,
+    photo,
+  };
 
   return {
-    interview: inv,
-    shop: inv.shop,
-    interviewer: inv.interviewer,
-    responses: responses || [],
-    categoryScores: categoryScores || inv.categoryScores || [],
-    purchaseIntent: intentDocs && intentDocs.length > 0 ? intentDocs[0] : inv.purchaseIntent,
-    photo: photoDocs && photoDocs.length > 0 ? photoDocs[0] : (inv.photo || { photo_url: inv.photo_url }),
+    interview: fullInterview,
+    shop,
+    interviewer,
+    responses,
+    categoryScores,
+    purchaseIntent,
+    photo,
   };
 }
 

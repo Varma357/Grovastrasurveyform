@@ -26,7 +26,7 @@ export default function ExecutiveReportPage() {
         }
       }
     } catch (err) {
-      console.error('Failed to load executive report stats from MongoDB:', err);
+      console.error('Failed to load executive report stats from Supabase:', err);
     }
   };
 

@@ -99,7 +99,7 @@ export default function AdminSettingsPage() {
         <div className="border-t border-dark-600 pt-6 space-y-3">
           <h3 className="font-bold text-base text-white">Full Raw Data Backup System</h3>
           <p className="text-xs text-slate-400">
-            Export complete un-aggregated raw interview responses directly from MongoDB. Historical raw responses are preserved permanently regardless of rule updates.
+            Export complete un-aggregated raw interview responses directly from Supabase PostgreSQL. Historical raw responses are preserved permanently regardless of rule updates.
           </p>
           <button
             onClick={handleFullBackup}

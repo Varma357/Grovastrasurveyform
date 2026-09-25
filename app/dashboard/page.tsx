@@ -77,7 +77,7 @@ export default function DashboardPage() {
         }
       }
     } catch (err) {
-      console.error('Failed to load surveys from MongoDB:', err);
+      console.error('Failed to load surveys from Supabase PostgreSQL:', err);
     } finally {
       setIsLoading(false);
     }
@@ -289,7 +289,7 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
           <div className="flex items-center space-x-2">
             <h2 className="text-2xl font-extrabold text-white tracking-tight">GROVASTRA PRODUCT DISCOVERY DASHBOARD</h2>
             <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-              MongoDB Live Database
+              Supabase PostgreSQL Live Database
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">Real-time market intelligence & decision support platform</p>
@@ -301,7 +301,7 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
             className="flex items-center space-x-1.5 bg-dark-800 hover:bg-dark-700 text-slate-300 px-3.5 py-2 rounded-xl border border-dark-600 text-xs font-semibold cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            <span>Refresh MongoDB Data</span>
+            <span>Refresh Supabase PostgreSQL Data</span>
           </button>
         </div>
       </div>
@@ -360,7 +360,7 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
           <div>
             <h3 className="font-extrabold text-lg text-white">Survey Records Table</h3>
             <p className="text-xs text-slate-400">
-              {filteredInterviews.length} survey(s) stored in MongoDB — scroll horizontally for category scores
+              {filteredInterviews.length} survey(s) stored in Supabase PostgreSQL — scroll horizontally for category scores
             </p>
           </div>
 
@@ -572,7 +572,7 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
               ) : (
                 <tr>
                   <td colSpan={22} className="p-8 text-center text-slate-400 italic">
-                    No survey records found in MongoDB.
+                    No survey records found in Supabase PostgreSQL.
                   </td>
                 </tr>
               )}
@@ -697,7 +697,7 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
               <TrendingUp className="w-5 h-5 text-indigo-400" />
               <span>FEATURE DEMAND TABLE</span>
             </h3>
-            <p className="text-xs text-slate-400">Demand evidence calculated from main & conditional survey responses in MongoDB</p>
+            <p className="text-xs text-slate-400">Demand evidence calculated from main & conditional survey responses in Supabase PostgreSQL</p>
           </div>
 
           <button
@@ -872,7 +872,7 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
               <h4 className="font-extrabold text-white text-base">Confirm Survey Deletion</h4>
             </div>
             <p className="text-xs text-slate-300">
-              Are you sure you want to delete this survey record? This action will permanently delete the survey document and all responses from MongoDB.
+              Are you sure you want to delete this survey record? This action will permanently delete the survey document and all responses from Supabase PostgreSQL.
             </p>
             <div className="flex items-center justify-end space-x-3 pt-2">
               <button

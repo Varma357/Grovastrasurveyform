@@ -64,7 +64,7 @@ function ShopReportContent() {
         }
       }
     } catch (err) {
-      console.error('Failed to load report from MongoDB:', err);
+      console.error('Failed to load report from Supabase:', err);
     } finally {
       setIsLoading(false);
     }
@@ -73,7 +73,7 @@ function ShopReportContent() {
   if (isLoading) {
     return (
       <div className="glass-panel p-12 text-center text-slate-400 text-sm">
-        Loading Shop Discovery Report from MongoDB...
+        Loading Shop Discovery Report from Supabase...
       </div>
     );
   }
