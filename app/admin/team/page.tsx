@@ -31,13 +31,13 @@ export default function AdminTeamPage() {
     setShops(shps);
   };
 
-  const handleCreateEmployee = (e: React.FormEvent) => {
+  const handleCreateEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !email.trim() || !mobile.trim() || !password.trim()) {
       return;
     }
 
-    const created = addEmployee({
+    const created = await addEmployee({
       name,
       email,
       mobile,

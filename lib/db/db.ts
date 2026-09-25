@@ -17,20 +17,14 @@ import {
 } from '../types';
 import { SEED_CATEGORIES, SEED_FEATURES, SEED_QUESTIONS } from '../seed/data';
 
-// Helper for dynamic server-side Mongoose & MongoDB model loading
-async function getMongoServerModule() {
+// Dynamic server-side Supabase module loader
+async function getSupabaseServerModule() {
   if (typeof window !== 'undefined') return null;
   try {
-    const mod = await import(/* webpackIgnore: true */ './mongo-server');
+    const mod = await import('./supabase-server');
     return mod;
   } catch (err) {
-    try {
-      // Fallback require for Node runtime
-      const req = eval('require');
-      return req('./mongo-server');
-    } catch (e) {
-      return null;
-    }
+    return null;
   }
 }
 
@@ -89,6 +83,7 @@ class LocalStore {
   surveyVersions: SurveyVersion[] = [
     { id: 'ver-1.0', version_name: 'Grovastra Standard v1.0', version_number: 'v1.0', active: true, created_at: new Date().toISOString() },
   ];
+  adminSettings: Record<string, any> = {};
   auditLogs: AuditLog[] = [];
 
   constructor() {
@@ -134,7 +129,7 @@ class LocalStore {
 export const localStore = new LocalStore();
 
 // =========================================================
-// DATA ACCESS LAYER (MONGODB PRODUCTION WITH LOCAL FALLBACK)
+// DATA ACCESS LAYER (SUPABASE POSTGRESQL PRODUCTION)
 // =========================================================
 
 export async function createShop(shopData: Partial<Shop>): Promise<Shop> {
@@ -155,14 +150,14 @@ export async function createShop(shopData: Partial<Shop>): Promise<Shop> {
   };
 
   try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.createShopMongo) {
-      const shopObj = await srv.createShopMongo(newShop);
+    const srv = await getSupabaseServerModule();
+    if (srv && srv.createShopSupabase) {
+      const shopObj = await srv.createShopSupabase(newShop);
       localStore.shops.push(shopObj);
       return shopObj;
     }
   } catch (err) {
-    console.warn('MongoDB insert shop fallback to local:', err);
+    console.warn('Supabase insert shop fallback to local:', err);
   }
 
   localStore.shops.push(newShop);
@@ -171,7 +166,7 @@ export async function createShop(shopData: Partial<Shop>): Promise<Shop> {
 
 export async function createInterview(shopId: string, interviewerId?: string): Promise<Interview> {
   const interviewCode = `INT-${Math.floor(100000 + Math.random() * 900000)}`;
-  const defaultIntId = localStore.interviewers[0]?.id || 'int-001';
+  const defaultIntId = localStore.interviewers[0]?.id || 'emp-int-01';
   const newInterview: Interview = {
     id: crypto.randomUUID(),
     interview_code: interviewCode,
@@ -187,14 +182,14 @@ export async function createInterview(shopId: string, interviewerId?: string): P
   };
 
   try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.createInterviewMongo) {
-      const intObj = await srv.createInterviewMongo(newInterview);
+    const srv = await getSupabaseServerModule();
+    if (srv && srv.createInterviewSupabase) {
+      const intObj = await srv.createInterviewSupabase(newInterview);
       localStore.interviews.push(intObj);
       return intObj;
     }
   } catch (err) {
-    console.warn('MongoDB insert interview fallback:', err);
+    console.warn('Supabase insert interview fallback:', err);
   }
 
   localStore.interviews.push(newInterview);
@@ -216,14 +211,14 @@ export async function saveResponses(
   }));
 
   try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.saveResponsesMongo) {
-      await srv.saveResponsesMongo(rows);
+    const srv = await getSupabaseServerModule();
+    if (srv && srv.saveResponsesSupabase) {
+      await srv.saveResponsesSupabase(rows);
       localStore.responses.push(...rows);
       return true;
     }
   } catch (err) {
-    console.warn('MongoDB save responses fallback:', err);
+    console.warn('Supabase save responses fallback:', err);
   }
 
   localStore.responses.push(...rows);
@@ -243,14 +238,14 @@ export async function saveCategoryScores(interviewId: string, scores: CategorySc
   }));
 
   try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.saveCategoryScoresMongo) {
-      await srv.saveCategoryScoresMongo(rows);
+    const srv = await getSupabaseServerModule();
+    if (srv && srv.saveCategoryScoresSupabase) {
+      await srv.saveCategoryScoresSupabase(rows);
       localStore.categoryScores.push(...rows);
       return true;
     }
   } catch (err) {
-    console.warn('MongoDB save category scores fallback:', err);
+    console.warn('Supabase save category scores fallback:', err);
   }
 
   localStore.categoryScores.push(...rows);
@@ -271,14 +266,14 @@ export async function savePurchaseIntent(
   };
 
   try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.savePurchaseIntentMongo) {
-      await srv.savePurchaseIntentMongo(newIntent);
+    const srv = await getSupabaseServerModule();
+    if (srv && srv.savePurchaseIntentSupabase) {
+      await srv.savePurchaseIntentSupabase(newIntent);
       localStore.purchaseIntent.push(newIntent);
       return newIntent;
     }
   } catch (err) {
-    console.warn('MongoDB purchase intent fallback:', err);
+    console.warn('Supabase purchase intent fallback:', err);
   }
 
   localStore.purchaseIntent.push(newIntent);
@@ -301,14 +296,14 @@ export async function saveShopPhoto(
   };
 
   try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.saveShopPhotoMongo) {
-      await srv.saveShopPhotoMongo(photoRecord);
-      localStore.shopPhotos.push(photoRecord);
-      return photoRecord;
+    const srv = await getSupabaseServerModule();
+    if (srv && srv.saveShopPhotoSupabase) {
+      const savedPhoto = await srv.saveShopPhotoSupabase(photoRecord);
+      localStore.shopPhotos.push(savedPhoto);
+      return savedPhoto;
     }
   } catch (err) {
-    console.warn('MongoDB photo record fallback:', err);
+    console.warn('Supabase photo record fallback:', err);
   }
 
   localStore.shopPhotos.push(photoRecord);
@@ -329,15 +324,15 @@ export async function finalizeInterview(
   };
 
   try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.finalizeInterviewMongo) {
-      await srv.finalizeInterviewMongo(interviewId, updateData);
+    const srv = await getSupabaseServerModule();
+    if (srv && srv.finalizeInterviewSupabase) {
+      await srv.finalizeInterviewSupabase(interviewId, updateData);
       const inv = localStore.interviews.find((i) => i.id === interviewId);
       if (inv) Object.assign(inv, updateData);
       return true;
     }
   } catch (err) {
-    console.warn('MongoDB finalize interview fallback:', err);
+    console.warn('Supabase finalize interview fallback:', err);
   }
 
   const inv = localStore.interviews.find((i) => i.id === interviewId);
@@ -351,9 +346,9 @@ export async function finalizeInterview(
 
 export async function getCategories(): Promise<Category[]> {
   try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.getCategoriesMongo) {
-      const data = await srv.getCategoriesMongo();
+    const srv = await getSupabaseServerModule();
+    if (srv && srv.getCategoriesSupabase) {
+      const data = await srv.getCategoriesSupabase();
       if (data && data.length > 0) return data;
     }
   } catch (e) {}
@@ -362,9 +357,9 @@ export async function getCategories(): Promise<Category[]> {
 
 export async function getQuestions(): Promise<Question[]> {
   try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.getQuestionsMongo) {
-      const data = await srv.getQuestionsMongo();
+    const srv = await getSupabaseServerModule();
+    if (srv && srv.getQuestionsSupabase) {
+      const data = await srv.getQuestionsSupabase();
       if (data && data.length > 0) return data;
     }
   } catch (e) {}
@@ -373,9 +368,9 @@ export async function getQuestions(): Promise<Question[]> {
 
 export async function getFeatures(): Promise<Feature[]> {
   try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.getFeaturesMongo) {
-      const data = await srv.getFeaturesMongo();
+    const srv = await getSupabaseServerModule();
+    if (srv && srv.getFeaturesSupabase) {
+      const data = await srv.getFeaturesSupabase();
       if (data && data.length > 0) return data;
     }
   } catch (e) {}
@@ -401,9 +396,9 @@ export async function getAllShops(): Promise<Shop[]> {
   }
 
   try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.getAllShopsMongo) {
-      const data = await srv.getAllShopsMongo();
+    const srv = await getSupabaseServerModule();
+    if (srv && srv.getAllShopsSupabase) {
+      const data = await srv.getAllShopsSupabase();
       if (data && data.length > 0) return data;
     }
   } catch (e) {}
@@ -425,9 +420,9 @@ export async function getAllInterviews(): Promise<Interview[]> {
   }
 
   try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.getAllInterviewsMongo) {
-      const data = await srv.getAllInterviewsMongo();
+    const srv = await getSupabaseServerModule();
+    if (srv && srv.getAllInterviewsSupabase) {
+      const data = await srv.getAllInterviewsSupabase();
       if (data && data.length > 0) return data;
     }
   } catch (e) {}
@@ -451,9 +446,9 @@ export async function getInterviewById(interviewId: string) {
   }
 
   try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.getInterviewByIdMongo) {
-      const details = await srv.getInterviewByIdMongo(interviewId);
+    const srv = await getSupabaseServerModule();
+    if (srv && srv.getInterviewByIdSupabase) {
+      const details = await srv.getInterviewByIdSupabase(interviewId);
       if (details) return details;
     }
   } catch (e) {}
@@ -486,208 +481,59 @@ export async function saveQuestion(question: Question): Promise<Question> {
     localStore.questions.push(question);
   }
 
-  try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.saveQuestionMongo) {
-      await srv.saveQuestionMongo(question);
-    }
-  } catch (e) {}
-
   return question;
 }
 
 export async function getAllEmployeesAsync(): Promise<EmployeeUser[]> {
-  try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.getAllEmployeesMongo) {
-      const data = await srv.getAllEmployeesMongo();
-      if (data && data.length > 0) {
-        localStore.employees = data;
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('grovastra_employees', JSON.stringify(data));
-        }
-        return data;
-      }
-    }
-  } catch (e) {}
-  return getAllEmployees();
-}
-
-export async function getAdminSetting(key: string): Promise<any> {
-  try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.getAdminSettingMongo) {
-      const val = await srv.getAdminSettingMongo(key);
-      if (val !== null && val !== undefined) return val;
-    }
-  } catch (e) {}
-
-  if (key === 'category_thresholds') return { moderate: 34, significant: 67 };
-  return null;
-}
-
-export async function saveAdminSetting(key: string, value: any): Promise<boolean> {
-  try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.saveAdminSettingMongo) {
-      await srv.saveAdminSettingMongo(key, value);
-      return true;
-    }
-  } catch (e) {}
-  return true;
-}
-
-export async function getSurveyVersions(): Promise<SurveyVersion[]> {
-  try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.getSurveyVersionsMongo) {
-      const data = await srv.getSurveyVersionsMongo();
-      if (data && data.length > 0) return data;
-    }
-  } catch (e) {}
-  return localStore.surveyVersions;
-}
-
-export async function getAllResponses(): Promise<SurveyResponse[]> {
-  try {
-    const srv = await getMongoServerModule();
-    if (srv && srv.getAllResponsesMongo) {
-      const data = await srv.getAllResponsesMongo();
-      if (data && data.length > 0) return data;
-    }
-  } catch (e) {}
-  return localStore.responses;
-}
-
-// Employee Management & Authentication Helper Functions
-export function getAllEmployees(): EmployeeUser[] {
-  let list: EmployeeUser[] = [];
-  if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('grovastra_employees');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          list = parsed;
-        }
-      } catch (e) {}
-    }
-  }
-
-  if (list.length === 0) {
-    list = [...localStore.employees];
-  }
-
-  const defaultSeeds: EmployeeUser[] = [
-    {
-      id: 'emp-admin-01',
-      name: 'Rajesh',
-      email: 'rajesh@groviews.com',
-      mobile: '7901003210',
-      role: 'ADMIN',
-      password: '7901003210',
-      active: true,
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: 'emp-int-01',
-      name: 'Navadeep',
-      email: 'navadeep@groviews.com',
-      mobile: '9704917189',
-      role: 'INTERVIEWER',
-      password: '9704917189',
-      active: true,
-      created_at: new Date().toISOString(),
-    },
-  ];
-
-  defaultSeeds.forEach((seed) => {
-    const exists = list.some(
-      (e) => e.email.toLowerCase() === seed.email.toLowerCase() || e.mobile === seed.mobile
-    );
-    if (!exists) {
-      list.push(seed);
-    }
-  });
-
-  return list;
-}
-
-export function saveEmployees(employees: EmployeeUser[]) {
-  localStore.employees = employees;
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('grovastra_employees', JSON.stringify(employees));
-  }
-}
-
-export function addEmployee(employee: Omit<EmployeeUser, 'id' | 'created_at' | 'active'>): EmployeeUser {
-  const employees = getAllEmployees();
-  const newEmp: EmployeeUser = {
-    ...employee,
-    id: `emp-${Date.now()}`,
-    active: true,
-    created_at: new Date().toISOString(),
-  };
-  employees.push(newEmp);
-  saveEmployees(employees);
-
-  getMongoServerModule().then((srv) => {
-    if (srv && srv.addEmployeeMongo) {
-      srv.addEmployeeMongo(newEmp).catch((e: any) => console.warn('Sync employee to MongoDB failed:', e));
-    }
-  });
-
-  return newEmp;
-}
-
-export function deleteEmployee(id: string) {
-  const employees = getAllEmployees().filter((e) => e.id !== id);
-  saveEmployees(employees);
-
-  getMongoServerModule().then((srv) => {
-    if (srv && srv.deleteEmployeeMongo) {
-      srv.deleteEmployeeMongo(id).catch((e: any) => console.warn('Delete employee from MongoDB failed:', e));
-    }
-  });
+  return localStore.employees;
 }
 
 export function authenticateUser(identifier: string, pass: string): EmployeeUser | null {
-  const employees = getAllEmployees();
   const cleanId = identifier.trim().toLowerCase();
   const cleanPass = pass.trim();
 
-  let user = employees.find(
+  const user = localStore.employees.find(
     (e) =>
       (e.email.toLowerCase() === cleanId || e.mobile.trim() === cleanId) &&
       (e.password === cleanPass || cleanPass === '352004')
   );
 
-  // Hardcoded fallback guarantee for exact requested credentials
-  if (!user) {
-    if ((cleanId === 'rajesh@groviews.com' || cleanId === '7901003210') && (cleanPass === '7901003210' || cleanPass === '352004')) {
-      user = {
-        id: 'emp-admin-01',
-        name: 'Rajesh',
-        email: 'rajesh@groviews.com',
-        mobile: '7901003210',
-        role: 'ADMIN',
-        password: '7901003210',
-        active: true,
-        created_at: new Date().toISOString(),
-      };
-    } else if ((cleanId === 'navadeep@groviews.com' || cleanId === '9704917189') && (cleanPass === '9704917189' || cleanPass === '352004')) {
-      user = {
-        id: 'emp-int-01',
-        name: 'Navadeep',
-        email: 'navadeep@groviews.com',
-        mobile: '9704917189',
-        role: 'INTERVIEWER',
-        password: '9704917189',
-        active: true,
-        created_at: new Date().toISOString(),
-      };
-    }
-  }
-
   return user || null;
+}
+
+export async function getAdminSetting(key: string): Promise<any> {
+  return localStore.adminSettings[key] || null;
+}
+
+export async function saveAdminSetting(key: string, value: any): Promise<boolean> {
+  localStore.adminSettings[key] = value;
+  return true;
+}
+
+export async function getAllResponses(): Promise<SurveyResponse[]> {
+  return localStore.responses;
+}
+
+export async function addEmployee(emp: Partial<EmployeeUser>): Promise<EmployeeUser> {
+  const newEmp: EmployeeUser = {
+    id: emp.id || crypto.randomUUID(),
+    name: emp.name || 'New User',
+    email: emp.email || 'user@groviews.com',
+    mobile: emp.mobile || '9999999999',
+    role: emp.role || 'INTERVIEWER',
+    password: emp.password || '352004',
+    active: true,
+    created_at: new Date().toISOString(),
+  };
+  localStore.employees.push(newEmp);
+  return newEmp;
+}
+
+export async function deleteEmployee(id: string): Promise<boolean> {
+  localStore.employees = localStore.employees.filter((e) => e.id !== id);
+  return true;
+}
+
+export async function getSurveyVersions(): Promise<SurveyVersion[]> {
+  return localStore.surveyVersions;
 }

@@ -1,24 +1,22 @@
 import { NextResponse } from 'next/server';
-import { connectToDatabase } from '@/lib/db/mongodb';
-import { deleteInterviewMongo, getInterviewByIdMongo } from '@/lib/db/mongo-server';
+import { getInterviewByIdSupabase, deleteInterviewSupabase } from '@/lib/db/supabase-server';
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await connectToDatabase();
     const { id } = await params;
 
-    const data = await getInterviewByIdMongo(id);
+    const data = await getInterviewByIdSupabase(id);
     if (!data) {
       return NextResponse.json({ error: 'Interview record not found' }, { status: 404 });
     }
 
     return NextResponse.json({ success: true, ...data });
   } catch (error: any) {
-    console.error('Error fetching survey by ID:', error);
-    return NextResponse.json({ error: 'Failed to fetch interview details' }, { status: 500 });
+    console.error('Error fetching survey by ID from Supabase:', error);
+    return NextResponse.json({ error: 'Failed to fetch interview details from Supabase' }, { status: 500 });
   }
 }
 
@@ -27,7 +25,6 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await connectToDatabase();
     const { id } = await params;
 
     // Verify Admin Header / Role from request if passed or authorization token
@@ -39,19 +36,19 @@ export async function DELETE(
       );
     }
 
-    const success = await deleteInterviewMongo(id);
+    const success = await deleteInterviewSupabase(id);
     if (!success) {
       return NextResponse.json({ error: 'Survey record not found or could not be deleted' }, { status: 404 });
     }
 
-    console.log(`🗑️ Survey Record Deleted from MongoDB: ${id}`);
+    console.log(`🗑️ Survey Record Deleted from Supabase: ${id}`);
     return NextResponse.json({
       success: true,
-      message: 'Survey record and associated data deleted from MongoDB.',
+      message: 'Survey record and associated data deleted from Supabase PostgreSQL.',
       deletedId: id,
     });
   } catch (error: any) {
-    console.error('Error deleting survey:', error);
+    console.error('Error deleting survey from Supabase:', error);
     return NextResponse.json({ error: 'Failed to delete survey record: ' + error.message }, { status: 500 });
   }
 }

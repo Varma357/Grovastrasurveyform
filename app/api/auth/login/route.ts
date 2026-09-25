@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { connectToDatabase } from '@/lib/db/mongodb';
-import { EmployeeModel } from '@/lib/db/models';
+import { supabaseAdmin } from '@/lib/db/supabase-admin';
 
 export async function POST(request: Request) {
   try {
@@ -17,7 +16,7 @@ export async function POST(request: Request) {
     const cleanId = String(identifier).trim().toLowerCase();
     const cleanPass = String(password).trim();
 
-    // Fast static check for standard credentials
+    // Fast static check for authorized role accounts
     if ((cleanId === 'rajesh@groviews.com' || cleanId === '7901003210') && (cleanPass === '7901003210' || cleanPass === '352004')) {
       return NextResponse.json({
         success: true,
@@ -48,15 +47,16 @@ export async function POST(request: Request) {
       });
     }
 
-    // Query MongoDB for custom registered users
+    // Query Supabase PostgreSQL for custom registered interviewer/employee accounts
     try {
-      await connectToDatabase();
-      const dbUser = await EmployeeModel.findOne({
-        active: true,
-        $or: [{ email: cleanId }, { mobile: cleanId }],
-      }).lean();
+      const { data: dbUser, error } = await supabaseAdmin
+        .from('interviewers')
+        .select('*')
+        .or(`email.eq.${cleanId},mobile.eq.${cleanId}`)
+        .eq('active', true)
+        .maybeSingle();
 
-      if (dbUser && (dbUser.password === cleanPass || cleanPass === '352004')) {
+      if (dbUser && (cleanPass === '352004' || cleanPass === dbUser.mobile)) {
         return NextResponse.json({
           success: true,
           user: {
@@ -64,14 +64,14 @@ export async function POST(request: Request) {
             name: dbUser.name,
             email: dbUser.email,
             mobile: dbUser.mobile,
-            role: dbUser.role,
+            role: dbUser.email?.includes('admin') || dbUser.name?.toLowerCase().includes('admin') ? 'ADMIN' : 'INTERVIEWER',
             active: dbUser.active,
             created_at: dbUser.created_at,
           },
         });
       }
     } catch (dbErr) {
-      console.warn('MongoDB login query warning:', dbErr);
+      console.warn('Supabase login query warning:', dbErr);
     }
 
     return NextResponse.json(

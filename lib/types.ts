@@ -57,6 +57,7 @@ export interface Interview {
   main_completed: boolean;
   optional_completed: boolean;
   optional_declined: boolean;
+  further_questions_allowed?: boolean;
   quick_followup: boolean;
   status: 'draft' | 'main_completed' | 'completed';
   overall_score?: number;
@@ -67,6 +68,9 @@ export interface Interview {
   shop?: Shop;
   interviewer?: Interviewer;
   photo_url?: string;
+  categoryScores?: CategoryScore[];
+  purchaseIntent?: PurchaseIntent;
+  photo?: ShopPhoto;
 }
 
 export interface Category {
