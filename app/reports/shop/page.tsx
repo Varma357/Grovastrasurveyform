@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { exportElementToPDF, sharePDFReport } from '@/lib/pdfExport';
 import { SEED_CATEGORIES } from '@/lib/seed/data';
+import { localStore } from '@/lib/db/db';
 
 function ShopReportContent() {
   const searchParams = useSearchParams();
@@ -35,7 +36,17 @@ function ShopReportContent() {
   }, [id]);
 
   const loadReport = async () => {
-    setIsLoading(true);
+    // Instant zero-delay resolution from localStore if present
+    if (id) {
+      const localInv = localStore.interviews.find(
+        (i) => i.id === id || i.interview_code === id || i.shop_id === id
+      );
+      if (localInv) {
+        setReportData(localInv);
+        setIsLoading(false);
+      }
+    }
+
     try {
       if (id) {
         const res = await fetch(`/api/surveys/${id}`);

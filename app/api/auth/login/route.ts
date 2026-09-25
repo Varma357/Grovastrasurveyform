@@ -1,13 +1,9 @@
 import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db/mongodb';
 import { EmployeeModel } from '@/lib/db/models';
-import { seedMongoDatabase } from '@/lib/db/mongo-init';
 
 export async function POST(request: Request) {
   try {
-    await connectToDatabase();
-    await seedMongoDatabase();
-
     const body = await request.json();
     const { identifier, password } = body;
 
@@ -21,19 +17,11 @@ export async function POST(request: Request) {
     const cleanId = String(identifier).trim().toLowerCase();
     const cleanPass = String(password).trim();
 
-    // Query MongoDB for matching user
-    const employees = await EmployeeModel.find({ active: true }).lean();
-
-    let user: any = employees.find(
-      (e: any) =>
-        (e.email.toLowerCase() === cleanId || e.mobile.trim() === cleanId) &&
-        (e.password === cleanPass || cleanPass === '352004')
-    );
-
-    // Default Fallbacks
-    if (!user) {
-      if ((cleanId === 'rajesh@groviews.com' || cleanId === '7901003210') && (cleanPass === '7901003210' || cleanPass === '352004')) {
-        user = {
+    // Fast static check for standard credentials
+    if ((cleanId === 'rajesh@groviews.com' || cleanId === '7901003210') && (cleanPass === '7901003210' || cleanPass === '352004')) {
+      return NextResponse.json({
+        success: true,
+        user: {
           id: 'emp-admin-01',
           name: 'Rajesh',
           email: 'rajesh@groviews.com',
@@ -41,9 +29,14 @@ export async function POST(request: Request) {
           role: 'ADMIN',
           active: true,
           created_at: new Date().toISOString(),
-        };
-      } else if ((cleanId === 'navadeep@groviews.com' || cleanId === '9704917189') && (cleanPass === '9704917189' || cleanPass === '352004')) {
-        user = {
+        },
+      });
+    }
+
+    if ((cleanId === 'navadeep@groviews.com' || cleanId === '9704917189') && (cleanPass === '9704917189' || cleanPass === '352004')) {
+      return NextResponse.json({
+        success: true,
+        user: {
           id: 'emp-int-01',
           name: 'Navadeep',
           email: 'navadeep@groviews.com',
@@ -51,29 +44,40 @@ export async function POST(request: Request) {
           role: 'INTERVIEWER',
           active: true,
           created_at: new Date().toISOString(),
-        };
+        },
+      });
+    }
+
+    // Query MongoDB for custom registered users
+    try {
+      await connectToDatabase();
+      const dbUser = await EmployeeModel.findOne({
+        active: true,
+        $or: [{ email: cleanId }, { mobile: cleanId }],
+      }).lean();
+
+      if (dbUser && (dbUser.password === cleanPass || cleanPass === '352004')) {
+        return NextResponse.json({
+          success: true,
+          user: {
+            id: dbUser.id,
+            name: dbUser.name,
+            email: dbUser.email,
+            mobile: dbUser.mobile,
+            role: dbUser.role,
+            active: dbUser.active,
+            created_at: dbUser.created_at,
+          },
+        });
       }
+    } catch (dbErr) {
+      console.warn('MongoDB login query warning:', dbErr);
     }
 
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Invalid Email / Mobile Number or Password. Please check your credentials.' },
-        { status: 401 }
-      );
-    }
-
-    // Return sanitized user (exclude password hash)
-    const sanitizedUser = {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      mobile: user.mobile,
-      role: user.role,
-      active: user.active,
-      created_at: user.created_at,
-    };
-
-    return NextResponse.json({ success: true, user: sanitizedUser });
+    return NextResponse.json(
+      { error: 'Invalid Email / Mobile Number or Password. Please check your credentials.' },
+      { status: 401 }
+    );
   } catch (error: any) {
     console.error('Login error:', error);
     return NextResponse.json({ error: 'Server authentication failure: ' + error.message }, { status: 500 });

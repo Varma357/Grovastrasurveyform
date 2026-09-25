@@ -81,6 +81,86 @@ html.light header {
   border-color: #e2e8f0 !important;
 }
 
+/* Light Mode High-Contrast Option & Input Overrides */
+html.light select,
+html.light input[type="text"],
+html.light input[type="number"],
+html.light textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+html.light select option {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+html.light .bg-indigo-950\/70,
+html.light .bg-indigo-950\/80,
+html.light .bg-indigo-950 {
+  background-color: #e0e7ff !important;
+  border-color: #6366f1 !important;
+  color: #312e81 !important;
+}
+
+html.light .bg-indigo-950\/70 *,
+html.light .bg-indigo-950\/80 *,
+html.light .bg-indigo-950 * {
+  color: #312e81 !important;
+}
+
+html.light .bg-purple-950\/70,
+html.light .bg-purple-950\/80,
+html.light .bg-purple-950 {
+  background-color: #f3e8ff !important;
+  border-color: #a855f7 !important;
+  color: #581c87 !important;
+}
+
+html.light .bg-purple-950\/70 *,
+html.light .bg-purple-950\/80 *,
+html.light .bg-purple-950 * {
+  color: #581c87 !important;
+}
+
+html.light .bg-dark-800\/80 {
+  background-color: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+html.light .bg-dark-800\/80 * {
+  color: #0f172a !important;
+}
+
+html.light .bg-indigo-600 {
+  background-color: #4f46e5 !important;
+  color: #ffffff !important;
+}
+
+html.light .bg-indigo-600 * {
+  color: #ffffff !important;
+}
+
+html.light .bg-purple-600 {
+  background-color: #9333ea !important;
+  color: #ffffff !important;
+}
+
+html.light .bg-purple-600 * {
+  color: #ffffff !important;
+}
+
+html.light .bg-emerald-600 {
+  background-color: #059669 !important;
+  color: #ffffff !important;
+}
+
+html.light .bg-emerald-600 * {
+  color: #ffffff !important;
+}
+
 /* Glassmorphism utilities */
 .glass-panel {
   background: rgba(19, 27, 46, 0.85);
@@ -148,37 +228,6 @@ html.light header {
   #printable-executive-report * {
     color: #0f172a !important;
     text-shadow: none !important;
-  }
-
-  #printable-shop-report,
-  #printable-executive-report {
-    background-color: #ffffff !important;
-    border: none !important;
     box-shadow: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-  }
-
-  #printable-shop-report .bg-dark-900,
-  #printable-executive-report .bg-dark-900,
-  #printable-shop-report .bg-indigo-950\/40,
-  #printable-executive-report .bg-indigo-950\/40,
-  #printable-shop-report .bg-emerald-950\/40,
-  #printable-executive-report .bg-emerald-950\/40,
-  #printable-shop-report .bg-amber-950\/40,
-  #printable-executive-report .bg-amber-950\/40 {
-    background-color: #f8fafc !important;
-    border-color: #cbd5e1 !important;
-  }
-
-  #printable-shop-report table th,
-  #printable-executive-report table th {
-    background-color: #f1f5f9 !important;
-    color: #1e293b !important;
-  }
-
-  @page {
-    margin: 1.2cm;
-    size: portrait;
   }
 }

@@ -7,6 +7,8 @@ import { useRole } from '@/components/context/RoleContext';
 import { exportElementToPDF, sharePDFReport } from '@/lib/pdfExport';
 import { SEED_CATEGORIES } from '@/lib/seed/data';
 
+import { localStore } from '@/lib/db/db';
+
 export default function InterviewsPage() {
   const router = useRouter();
   const { role } = useRole();
@@ -25,15 +27,24 @@ export default function InterviewsPage() {
   }, []);
 
   const loadInterviews = async () => {
-    setIsLoading(true);
+    if (localStore.interviews.length > 0) {
+      setInterviews(localStore.interviews);
+      handleSelectInterview(localStore.interviews[0].id);
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+    }
+
     try {
       const res = await fetch('/api/surveys');
       if (res.ok) {
         const data = await res.json();
         if (data.interviews && data.interviews.length > 0) {
           setInterviews(data.interviews);
-          handleSelectInterview(data.interviews[0].id);
-        } else {
+          if (!selectedId) {
+            handleSelectInterview(data.interviews[0].id);
+          }
+        } else if (localStore.interviews.length === 0) {
           setInterviews([]);
           setReportData(null);
         }
@@ -47,18 +58,25 @@ export default function InterviewsPage() {
 
   const handleSelectInterview = async (id: string) => {
     setSelectedId(id);
+    const localMatch = localStore.interviews.find((i) => i.id === id);
+    if (localMatch) {
+      setReportData(localMatch);
+    }
+
     try {
       const res = await fetch(`/api/surveys/${id}`);
       if (res.ok) {
         const data = await res.json();
         setReportData(data);
-      } else {
+      } else if (!localMatch) {
         const fallback = interviews.find((i) => i.id === id);
         setReportData(fallback);
       }
     } catch (e) {
-      const fallback = interviews.find((i) => i.id === id);
-      setReportData(fallback);
+      if (!localMatch) {
+        const fallback = interviews.find((i) => i.id === id);
+        setReportData(fallback);
+      }
     }
   };
 

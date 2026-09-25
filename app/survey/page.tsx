@@ -240,36 +240,62 @@ export default function SurveyPage() {
 
       const photoUrl = photoDataUrl || `https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=800&auto=format&fit=crop&q=80`;
 
+      // Synchronously populate localStore for instant frontend state reflection
+      const fullShop: Shop = {
+        ...activeShop,
+        shop_name: shopName,
+        client_name: clientName,
+        location,
+        contact_number: contactNumber,
+        shop_type: shopType,
+        staff_count: Number(staffCount),
+        years_in_business: Number(yearsInBusiness),
+        online_presence: onlinePresence,
+      };
+
+      const existingShopIdx = localStore.shops.findIndex((s) => s.id === fullShop.id);
+      if (existingShopIdx >= 0) localStore.shops[existingShopIdx] = fullShop;
+      else localStore.shops.unshift(fullShop);
+
+      const fullInterview: any = {
+        id: interviewId,
+        interview_code: `INT-${interviewId.slice(-6).toUpperCase()}`,
+        shop_id: fullShop.id,
+        interviewer_id: currentUser?.id || 'emp-int-01',
+        started_at: new Date(startTime).toISOString(),
+        completed_at: new Date().toISOString(),
+        duration_minutes: durationMinutes,
+        main_completed: true,
+        optional_completed: permissionChoice === 'YES',
+        optional_declined: permissionChoice === 'NO',
+        further_questions_allowed: permissionChoice === 'YES',
+        quick_followup: quickFollowup,
+        status: 'completed',
+        overall_score: overallPct,
+        verdict: verdict,
+        is_walkin: isWalkin,
+        photo_url: photoUrl,
+        shop: fullShop,
+        interviewer: currentUser || { id: 'emp-int-01', name: 'Navadeep' },
+        categoryScores: scoreRows,
+        purchaseIntent: {
+          interest_level: interestLevel,
+          readiness_level: readinessLevel,
+          price_range: priceRange,
+        },
+      };
+
+      const existingInvIdx = localStore.interviews.findIndex((i) => i.id === interviewId);
+      if (existingInvIdx >= 0) localStore.interviews[existingInvIdx] = fullInterview;
+      else localStore.interviews.unshift(fullInterview);
+
       // Save to MongoDB via API Endpoint
       const res = await fetch('/api/surveys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          shop: {
-            ...activeShop,
-            shop_name: shopName,
-            client_name: clientName,
-            location,
-            contact_number: contactNumber,
-            shop_type: shopType,
-            staff_count: Number(staffCount),
-            years_in_business: Number(yearsInBusiness),
-            online_presence: onlinePresence,
-          },
-          interview: {
-            id: interviewId,
-            interviewer_id: currentUser?.id || 'emp-int-01',
-            started_at: new Date(startTime).toISOString(),
-            duration_minutes: durationMinutes,
-            main_completed: true,
-            optional_completed: permissionChoice === 'YES',
-            optional_declined: permissionChoice === 'NO',
-            further_questions_allowed: permissionChoice === 'YES',
-            quick_followup: quickFollowup,
-            overall_score: overallPct,
-            verdict: verdict,
-            is_walkin: isWalkin,
-          },
+          shop: fullShop,
+          interview: fullInterview,
           responses: responsesPayload,
           categoryScores: scoreRows,
           purchaseIntent: {
@@ -288,34 +314,11 @@ export default function SurveyPage() {
         console.log('✅ MongoDB API submission successful');
       }
 
-      // Also save to local store as backup
-      await saveResponses(interviewId, responsesPayload);
-      await saveCategoryScores(interviewId, scoreRows);
-      await savePurchaseIntent(interviewId, {
-        interest_level: interestLevel,
-        readiness_level: readinessLevel,
-        price_range: priceRange,
-      });
-      await saveShopPhoto(activeShop.id, interviewId, photoUrl);
-      await finalizeInterview(interviewId, {
-        optionalCompleted: permissionChoice === 'YES',
-        optionalDeclined: permissionChoice === 'NO',
-        quickFollowup,
-      });
-
-      const inv = localStore.interviews.find((i) => i.id === interviewId);
-      if (inv) {
-        inv.duration_minutes = durationMinutes;
-        inv.overall_score = overallPct;
-        inv.verdict = verdict;
-        inv.is_walkin = isWalkin;
-        inv.photo_url = photoUrl;
-      }
-
-      setStep('completed');
+      // Route directly to the instant Shop Discovery Report
+      router.push(`/reports/shop?id=${interviewId}`);
     } catch (err) {
       console.error('Error submitting survey:', err);
-      setStep('completed');
+      router.push(`/reports/shop?id=${interviewId}`);
     } finally {
       setIsSubmitting(false);
     }
