@@ -151,7 +151,7 @@ CREATE INDEX IF NOT EXISTS idx_purchase_intent_inv_id   ON public.purchase_inten
 CREATE INDEX IF NOT EXISTS idx_shop_photos_interview_id ON public.shop_photos(interview_id);
 
 -- =============================================================
--- ROW LEVEL SECURITY - Disable for service role (used in API)
+-- ROW LEVEL SECURITY
 -- =============================================================
 ALTER TABLE public.shops           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.interviewers    ENABLE ROW LEVEL SECURITY;
@@ -164,6 +164,19 @@ ALTER TABLE public.responses       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.category_scores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.purchase_intent ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.shop_photos     ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies before re-creating (safe to re-run)
+DROP POLICY IF EXISTS "service_role_all_shops"            ON public.shops;
+DROP POLICY IF EXISTS "service_role_all_interviewers"     ON public.interviewers;
+DROP POLICY IF EXISTS "service_role_all_interviews"       ON public.interviews;
+DROP POLICY IF EXISTS "service_role_all_categories"       ON public.categories;
+DROP POLICY IF EXISTS "service_role_all_features"         ON public.features;
+DROP POLICY IF EXISTS "service_role_all_questions"        ON public.questions;
+DROP POLICY IF EXISTS "service_role_all_question_options" ON public.question_options;
+DROP POLICY IF EXISTS "service_role_all_responses"        ON public.responses;
+DROP POLICY IF EXISTS "service_role_all_category_scores"  ON public.category_scores;
+DROP POLICY IF EXISTS "service_role_all_purchase_intent"  ON public.purchase_intent;
+DROP POLICY IF EXISTS "service_role_all_shop_photos"      ON public.shop_photos;
 
 -- Allow full access via service role key (used in API routes)
 CREATE POLICY "service_role_all_shops"            ON public.shops            FOR ALL TO service_role USING (true) WITH CHECK (true);

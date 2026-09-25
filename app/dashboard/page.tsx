@@ -32,6 +32,12 @@ import {
 import { useRole } from '@/components/context/RoleContext';
 import { SEED_CATEGORIES, SEED_FEATURES } from '@/lib/seed/data';
 import { generateCSV } from '@/lib/export';
+import {
+  CategoryOpportunityChart,
+  FeatureDemandChart,
+  AdoptionReadinessChart,
+  PricingChart,
+} from '@/components/dashboard/DashboardCharts';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -155,16 +161,166 @@ export default function DashboardPage() {
   const towns = Array.from(new Set(shops.map((s) => s.location).filter(Boolean)));
   const dates = Array.from(new Set(interviews.map((i) => new Date(i.started_at).toISOString().split('T')[0]).filter(Boolean)));
 
-  // Helper to retrieve category score from an interview
+  // Helper to retrieve category score from an interview with flexible matching
   const getCategoryScoreObj = (inv: any, catCode: string) => {
     if (!inv.categoryScores || !Array.isArray(inv.categoryScores)) return null;
-    return inv.categoryScores.find(
-      (cs: any) =>
-        cs.category_id === `cat-${catCode.toLowerCase()}` ||
-        cs.category_id === catCode ||
-        cs.category_code === catCode
-    );
+    const codeLower = catCode.toLowerCase();
+    return inv.categoryScores.find((cs: any) => {
+      const csCat = (cs.category_id || cs.category_code || '').toLowerCase().replace(/^cat-/, '');
+      return csCat === codeLower;
+    });
   };
+
+  // Dynamic Category Analysis Data
+  const categoryAnalysisData = SEED_CATEGORIES.map((cat) => {
+    let catTotalPct = 0;
+    let catCount = 0;
+    let strongCount = 0;
+    let modCount = 0;
+    let sigCount = 0;
+    let conditionalFollowups = 0;
+
+    filteredInterviews.forEach((inv) => {
+      const sc = getCategoryScoreObj(inv, cat.category_code);
+      if (sc) {
+        catTotalPct += sc.percentage || 0;
+        catCount++;
+        if (sc.status === 'Significant Opportunity') sigCount++;
+        else if (sc.status === 'Moderate Opportunity') modCount++;
+        else strongCount++;
+      }
+      if (inv.optional_completed) {
+        conditionalFollowups++;
+      }
+    });
+
+    const sampleN = catCount || filteredInterviews.length;
+    const avgPct = sampleN > 0 ? Math.round(catTotalPct / sampleN) : 0;
+
+    return {
+      category_code: cat.category_code,
+      category_name: cat.category_name,
+      description: cat.description,
+      sampleN,
+      avgScoreStr: `${((avgPct / 100) * 3).toFixed(1)} / 3`,
+      avgPct,
+      strongCount,
+      modCount,
+      sigCount,
+      conditionalFollowups,
+    };
+  });
+
+  const categoryChartData = categoryAnalysisData.map((d) => ({
+    category: d.category_code,
+    opportunityPct: d.avgPct,
+    strongCount: d.strongCount,
+    modCount: d.modCount,
+    sigCount: d.sigCount,
+  }));
+
+  // Dynamic Feature Demand Data
+  const featureDemandData = SEED_FEATURES.slice(0, 10).map((feat) => {
+    const totalN = filteredInterviews.length;
+    const affectedCount = filteredInterviews.filter((inv) => {
+      const sc = getCategoryScoreObj(inv, feat.category_code);
+      return sc && sc.percentage >= 34;
+    }).length;
+
+    const affectedPct = totalN > 0 ? Math.round((affectedCount / totalN) * 100) : 0;
+    const painSignal = affectedPct >= 50 ? 'High Pain' : affectedPct >= 25 ? 'Moderate Pain' : 'Low Pain';
+    const conditionalSignal = filteredInterviews.some((i) => i.optional_completed) ? 'High' : 'Moderate';
+    const evidence = affectedPct >= 50 ? 'Strong Demand Evidence' : 'Moderate Evidence';
+
+    return {
+      feature_code: feat.feature_code,
+      feature_name: feat.feature_name,
+      category_code: feat.category_code,
+      description: feat.description,
+      affectedCount,
+      totalN: totalN || 1,
+      affectedPct,
+      painSignal,
+      conditionalSignal,
+      evidence,
+    };
+  });
+
+  const featureChartData = featureDemandData.map((d) => ({
+    feature: d.feature_name.length > 18 ? d.feature_name.slice(0, 16) + '...' : d.feature_name,
+    affectedPct: d.affectedPct,
+  }));
+
+  // Dynamic Adoption Readiness Table & Chart Data
+  const readinessLevels = [
+    'Yes, ready to start',
+    'Interested, but need to discuss',
+    'Interested, but not now',
+    'Just exploring',
+    'No / Not interested',
+  ];
+
+  const adoptionTableData = readinessLevels.map((lvl) => {
+    const count = filteredInterviews.filter((inv) => {
+      const val = inv.purchaseIntent?.readiness_level || '';
+      if (lvl === 'No / Not interested') {
+        return val === 'No' || val === 'No / Not interested' || val === 'Not interested';
+      }
+      return val === lvl;
+    }).length;
+
+    const pctNum = totalInterviews > 0 ? Math.round((count / totalInterviews) * 100) : 0;
+    return {
+      readiness: lvl,
+      count,
+      pct: `${pctNum}%`,
+      pctNum,
+    };
+  });
+
+  const adoptionChartData = adoptionTableData.map((d) => ({
+    name: d.readiness,
+    value: d.count,
+  }));
+
+  // Dynamic Pricing Analysis Table & Chart Data
+  const priceRangesConfig = [
+    { range: '₹2,000–₹5,000/month', ready: 'Yes' },
+    { range: '₹500–₹2,000/month', ready: 'Yes' },
+    { range: '₹5,000–₹10,000/month', ready: 'Yes' },
+    { range: 'Above ₹10,000/month', ready: 'Yes' },
+    { range: '₹0 — only if free', ready: 'No' },
+    { range: 'Cannot decide yet', ready: 'Pending' },
+  ];
+
+  const pricingTableData = priceRangesConfig.map((item) => {
+    const count = filteredInterviews.filter((inv) => {
+      const val = inv.purchaseIntent?.price_range || '';
+      if (item.range === '₹500–₹2,000/month') {
+        return (
+          val === '₹500–₹2,000/month' ||
+          val === '₹500–₹1,000/month' ||
+          val === '₹1,000–₹2,000/month' ||
+          val === 'Below ₹500/month'
+        );
+      }
+      return val === item.range;
+    }).length;
+
+    const pctNum = totalInterviews > 0 ? Math.round((count / totalInterviews) * 100) : 0;
+    return {
+      range: item.range,
+      count,
+      pct: `${pctNum}%`,
+      pctNum,
+      ready: item.ready,
+    };
+  });
+
+  const pricingChartData = pricingTableData.map((d) => ({
+    name: d.range,
+    value: d.count,
+  }));
 
   // Export Main Survey Records CSV
   const exportSurveyRecordsCSV = () => {
@@ -183,6 +339,8 @@ export default function DashboardPage() {
         Verdict: inv.verdict || 'Moderate Opportunity',
         Survey_Type: inv.optional_completed ? 'Main + Conditional' : 'Main Only',
         Walkin: inv.is_walkin !== false ? 'Yes' : 'No',
+        Readiness: inv.purchaseIntent?.readiness_level || 'N/A',
+        Price_Range: inv.purchaseIntent?.price_range || 'N/A',
       };
 
       SEED_CATEGORIES.forEach((cat) => {
@@ -199,45 +357,20 @@ export default function DashboardPage() {
 
   // 1. Export Category Analysis CSV
   const exportCategoryAnalysisCSV = () => {
-    const data = SEED_CATEGORIES.map((cat) => {
-      let catTotalPct = 0;
-      let catCount = 0;
-      let strongCount = 0;
-      let modCount = 0;
-      let sigCount = 0;
-      let conditionalFollowups = 0;
-
-      filteredInterviews.forEach((inv) => {
-        const sc = getCategoryScoreObj(inv, cat.category_code);
-        if (sc) {
-          catTotalPct += sc.percentage || 0;
-          catCount++;
-          if (sc.status === 'Significant Opportunity') sigCount++;
-          else if (sc.status === 'Moderate Opportunity') modCount++;
-          else strongCount++;
-        }
-        if (inv.optional_completed) {
-          conditionalFollowups++;
-        }
-      });
-
-      const sampleN = catCount || filteredInterviews.length;
-      const avgPct = sampleN > 0 ? Math.round(catTotalPct / sampleN) : 0;
-      const avgScore = ((avgPct / 100) * 3).toFixed(1);
-
-      const strongPct = sampleN > 0 ? Math.round((strongCount / sampleN) * 100) : 0;
-      const modPct = sampleN > 0 ? Math.round((modCount / sampleN) * 100) : 0;
-      const sigPct = sampleN > 0 ? Math.round((sigCount / sampleN) * 100) : 0;
+    const data = categoryAnalysisData.map((cat) => {
+      const strongPct = cat.sampleN > 0 ? Math.round((cat.strongCount / cat.sampleN) * 100) : 0;
+      const modPct = cat.sampleN > 0 ? Math.round((cat.modCount / cat.sampleN) * 100) : 0;
+      const sigPct = cat.sampleN > 0 ? Math.round((cat.sigCount / cat.sampleN) * 100) : 0;
 
       return {
         Category: cat.category_name,
-        Shops: sampleN,
-        'Average Score': `${avgScore} / 3`,
-        'Opportunity %': `${avgPct}%`,
-        Strong: `${strongCount} (${strongPct}%)`,
-        Moderate: `${modCount} (${modPct}%)`,
-        'Significant Opportunity': `${sigCount} (${sigPct}%)`,
-        'Conditional Follow-ups': conditionalFollowups,
+        Shops: cat.sampleN,
+        'Average Score': cat.avgScoreStr,
+        'Opportunity %': `${cat.avgPct}%`,
+        Strong: `${cat.strongCount} (${strongPct}%)`,
+        Moderate: `${cat.modCount} (${modPct}%)`,
+        'Significant Opportunity': `${cat.sigCount} (${sigPct}%)`,
+        'Conditional Follow-ups': cat.conditionalFollowups,
       };
     });
 
@@ -246,29 +379,37 @@ export default function DashboardPage() {
 
   // 2. Export Feature Demand CSV
   const exportFeatureDemandCSV = () => {
-    const data = SEED_FEATURES.map((feat) => {
-      const totalN = filteredInterviews.length;
-      const affectedCount = filteredInterviews.filter((inv) => {
-        const sc = getCategoryScoreObj(inv, feat.category_code);
-        return sc && sc.percentage >= 34;
-      }).length;
-
-      const affectedPct = totalN > 0 ? Math.round((affectedCount / totalN) * 100) : 0;
-      const painSignal = affectedPct >= 50 ? 'High Pain' : affectedPct >= 25 ? 'Moderate Pain' : 'Low Pain';
-      const conditionalSignal = filteredInterviews.some((i) => i.optional_completed) ? 'High' : 'Moderate';
-      const evidence = affectedPct >= 50 ? 'Strong Demand Evidence' : 'Moderate Evidence';
-
-      return {
-        Feature: feat.feature_name,
-        Category: feat.category_code,
-        'Shops Affected': `${affectedCount} (n=${totalN})`,
-        'Pain Signal': `${affectedPct}% (${painSignal})`,
-        'Conditional Signal': conditionalSignal,
-        Evidence: evidence,
-      };
-    });
+    const data = featureDemandData.map((feat) => ({
+      Feature: feat.feature_name,
+      Category: feat.category_code,
+      'Shops Affected': `${feat.affectedCount} (n=${feat.totalN})`,
+      'Pain Signal': `${feat.affectedPct}% (${feat.painSignal})`,
+      'Conditional Signal': feat.conditionalSignal,
+      Evidence: feat.evidence,
+    }));
 
     generateCSV(data, 'Grovastra_Feature_Demand');
+  };
+
+  // 3. Export Adoption Readiness CSV
+  const exportAdoptionReadinessCSV = () => {
+    const data = adoptionTableData.map((row) => ({
+      'Readiness Level': row.readiness,
+      Shops: row.count,
+      Percentage: row.pct,
+    }));
+    generateCSV(data, 'Grovastra_Adoption_Readiness');
+  };
+
+  // 4. Export Pricing CSV
+  const exportPricingCSV = () => {
+    const data = pricingTableData.map((row) => ({
+      'Price Range': row.range,
+      Shops: row.count,
+      Percentage: row.pct,
+      'Ready to Start': row.ready,
+    }));
+    generateCSV(data, 'Grovastra_Pricing_Analysis');
   };
 
   const handleWhatsAppShare = (inv: any) => {
@@ -606,17 +747,17 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
         )}
       </div>
 
-      {/* DASHBOARD TABLE ANALYTICS SECTION */}
+      {/* DASHBOARD TABLE & GRAPHICAL ANALYTICS SECTION */}
 
-      {/* 1. CATEGORY ANALYSIS TABLE WITH CSV DOWNLOAD BUTTON */}
-      <div className="glass-panel p-6 space-y-4">
+      {/* 1. CATEGORY ANALYSIS TABLE & CHART */}
+      <div className="glass-panel p-6 space-y-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-dark-600 pb-3">
           <div>
             <h3 className="font-extrabold text-lg text-white flex items-center space-x-2">
-              <AlertTriangle className="w-5 h-5 text-amber-400" />
-              <span>CATEGORY ANALYSIS TABLE</span>
+              <Layers className="w-5 h-5 text-indigo-400" />
+              <span>CATEGORY ANALYSIS TABLE & CHART</span>
             </h3>
-            <p className="text-xs text-slate-400">Opportunity scores across all 9 saree shop categories calculated from main questions</p>
+            <p className="text-xs text-slate-400">Opportunity scores across key saree business functional areas</p>
           </div>
 
           <button
@@ -628,74 +769,52 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
           </button>
         </div>
 
-        <div className="overflow-x-auto border border-dark-600 rounded-xl">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-dark-900 text-slate-400 border-b border-dark-600">
-              <tr>
-                <th className="p-3 font-extrabold text-white">Category</th>
-                <th className="p-3 font-extrabold text-slate-300">Shops</th>
-                <th className="p-3 font-extrabold text-slate-300">Average Score</th>
-                <th className="p-3 font-extrabold text-slate-300">Opportunity %</th>
-                <th className="p-3 font-extrabold text-emerald-400">Strong</th>
-                <th className="p-3 font-extrabold text-amber-400">Moderate</th>
-                <th className="p-3 font-extrabold text-rose-400">Significant Opportunity</th>
-                <th className="p-3 font-extrabold text-purple-300">Conditional Follow-ups</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-dark-600">
-              {SEED_CATEGORIES.map((cat) => {
-                let catTotalPct = 0;
-                let catCount = 0;
-                let strongCount = 0;
-                let modCount = 0;
-                let sigCount = 0;
-                let conditionalFollowups = 0;
-
-                filteredInterviews.forEach((inv) => {
-                  const sc = getCategoryScoreObj(inv, cat.category_code);
-                  if (sc) {
-                    catTotalPct += sc.percentage || 0;
-                    catCount++;
-                    if (sc.status === 'Significant Opportunity') sigCount++;
-                    else if (sc.status === 'Moderate Opportunity') modCount++;
-                    else strongCount++;
-                  }
-                  if (inv.optional_completed) {
-                    conditionalFollowups++;
-                  }
-                });
-
-                const sampleN = catCount || filteredInterviews.length;
-                const avgPct = sampleN > 0 ? Math.round(catTotalPct / sampleN) : 0;
-
-                return (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 overflow-x-auto border border-dark-600 rounded-xl">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-dark-900 text-slate-400 border-b border-dark-600">
+                <tr>
+                  <th className="p-3 font-extrabold text-white">Category</th>
+                  <th className="p-3 font-extrabold text-slate-300">Shops</th>
+                  <th className="p-3 font-extrabold text-slate-300">Average Score</th>
+                  <th className="p-3 font-extrabold text-slate-300">Opportunity %</th>
+                  <th className="p-3 font-extrabold text-emerald-400">Strong</th>
+                  <th className="p-3 font-extrabold text-amber-400">Moderate</th>
+                  <th className="p-3 font-extrabold text-rose-400">Significant</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dark-600">
+                {categoryAnalysisData.map((cat) => (
                   <tr key={cat.category_code} className="hover:bg-dark-700/50">
                     <td className="p-3 font-extrabold text-white">
                       <div>{cat.category_name}</div>
                       <div className="text-[10px] font-normal text-slate-400">{cat.description}</div>
                     </td>
-                    <td className="p-3 font-mono font-bold text-slate-300">{sampleN}</td>
-                    <td className="p-3 font-mono font-bold text-indigo-300">{((avgPct / 100) * 3).toFixed(1)} / 3</td>
-                    <td className="p-3 font-mono font-bold text-amber-300">{avgPct}%</td>
-                    <td className="p-3 font-mono text-emerald-400 font-bold">{strongCount} ({sampleN ? Math.round((strongCount/sampleN)*100) : 0}%)</td>
-                    <td className="p-3 font-mono text-amber-400 font-bold">{modCount} ({sampleN ? Math.round((modCount/sampleN)*100) : 0}%)</td>
-                    <td className="p-3 font-mono text-rose-400 font-bold">{sigCount} ({sampleN ? Math.round((sigCount/sampleN)*100) : 0}%)</td>
-                    <td className="p-3 font-mono text-purple-300 font-bold">{conditionalFollowups}</td>
+                    <td className="p-3 font-mono font-bold text-slate-300">{cat.sampleN}</td>
+                    <td className="p-3 font-mono font-bold text-indigo-300">{cat.avgScoreStr}</td>
+                    <td className="p-3 font-mono font-bold text-amber-300">{cat.avgPct}%</td>
+                    <td className="p-3 font-mono text-emerald-400 font-bold">{cat.strongCount}</td>
+                    <td className="p-3 font-mono text-amber-400 font-bold">{cat.modCount}</td>
+                    <td className="p-3 font-mono text-rose-400 font-bold">{cat.sigCount}</td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="lg:col-span-1">
+            <CategoryOpportunityChart data={categoryChartData} />
+          </div>
         </div>
       </div>
 
-      {/* 2. FEATURE DEMAND TABLE WITH CSV DOWNLOAD BUTTON */}
-      <div className="glass-panel p-6 space-y-4">
+      {/* 2. FEATURE DEMAND TABLE & CHART */}
+      <div className="glass-panel p-6 space-y-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-dark-600 pb-3">
           <div>
             <h3 className="font-extrabold text-lg text-white flex items-center space-x-2">
               <TrendingUp className="w-5 h-5 text-indigo-400" />
-              <span>FEATURE DEMAND TABLE</span>
+              <span>FEATURE DEMAND TABLE & CHART</span>
             </h3>
             <p className="text-xs text-slate-400">Demand evidence calculated from main & conditional survey responses in Supabase PostgreSQL</p>
           </div>
@@ -709,125 +828,129 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
           </button>
         </div>
 
-        <div className="overflow-x-auto border border-dark-600 rounded-xl">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-dark-900 text-slate-400 border-b border-dark-600">
-              <tr>
-                <th className="p-3 font-extrabold text-white">Feature</th>
-                <th className="p-3 font-extrabold text-slate-300">Category</th>
-                <th className="p-3 font-extrabold text-slate-300">Shops Affected</th>
-                <th className="p-3 font-extrabold text-slate-300">Pain Signal</th>
-                <th className="p-3 font-extrabold text-slate-300">Conditional Signal</th>
-                <th className="p-3 font-extrabold text-slate-300">Evidence</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-dark-600">
-              {SEED_FEATURES.slice(0, 10).map((feat) => {
-                const totalN = filteredInterviews.length;
-                const affectedCount = filteredInterviews.filter((inv) => {
-                  const sc = getCategoryScoreObj(inv, feat.category_code);
-                  return sc && sc.percentage >= 34;
-                }).length;
-
-                const affectedPct = totalN > 0 ? Math.round((affectedCount / totalN) * 100) : 0;
-                const painSignal = affectedPct >= 50 ? 'High Pain' : affectedPct >= 25 ? 'Moderate Pain' : 'Low Pain';
-                const hasConditional = filteredInterviews.some((i) => i.optional_completed);
-                const conditionalSignal = hasConditional ? 'High' : 'Moderate';
-                const evidence = affectedPct >= 50 ? 'Strong Demand Evidence' : 'Moderate Evidence';
-
-                return (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 overflow-x-auto border border-dark-600 rounded-xl">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-dark-900 text-slate-400 border-b border-dark-600">
+                <tr>
+                  <th className="p-3 font-extrabold text-white">Feature</th>
+                  <th className="p-3 font-extrabold text-slate-300">Category</th>
+                  <th className="p-3 font-extrabold text-slate-300">Shops Affected</th>
+                  <th className="p-3 font-extrabold text-slate-300">Pain Signal</th>
+                  <th className="p-3 font-extrabold text-slate-300">Evidence</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dark-600">
+                {featureDemandData.map((feat) => (
                   <tr key={feat.feature_code} className="hover:bg-dark-700/50">
                     <td className="p-3 font-bold text-white">
                       <div>{feat.feature_name}</div>
                       <div className="text-[10px] font-normal text-slate-400">{feat.description}</div>
                     </td>
                     <td className="p-3 font-bold text-indigo-300">{feat.category_code}</td>
-                    <td className="p-3 font-mono font-bold text-slate-200">{affectedCount} (n={totalN || 1})</td>
-                    <td className="p-3 font-mono font-bold text-amber-300">{affectedPct}% ({painSignal})</td>
-                    <td className="p-3 font-mono text-purple-300">{conditionalSignal}</td>
+                    <td className="p-3 font-mono font-bold text-slate-200">{feat.affectedCount} (n={feat.totalN})</td>
+                    <td className="p-3 font-mono font-bold text-amber-300">{feat.affectedPct}% ({feat.painSignal})</td>
                     <td className="p-3">
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/30">
-                        {evidence}
+                        {feat.evidence}
                       </span>
                     </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* 3 & 4. ADOPTION READINESS & PRICING TABLES */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Adoption Table */}
-        <div className="glass-panel p-6 space-y-4">
-          <h3 className="font-extrabold text-base text-white border-b border-dark-600 pb-2">
-            ADOPTION READINESS TABLE
-          </h3>
-          <div className="overflow-x-auto border border-dark-600 rounded-xl">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-dark-900 text-slate-400 border-b border-dark-600">
-                <tr>
-                  <th className="p-3 font-bold text-white">Readiness Level</th>
-                  <th className="p-3 font-bold text-slate-300">Shops</th>
-                  <th className="p-3 font-bold text-emerald-400">Percentage</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-dark-600">
-                {[
-                  { readiness: 'Yes, ready to start', count: totalInterviews || 1, pct: totalInterviews ? '100%' : '0%' },
-                  { readiness: 'Interested, but need to discuss', count: 0, pct: '0%' },
-                  { readiness: 'Interested, but not now', count: 0, pct: '0%' },
-                  { readiness: 'Just exploring', count: 0, pct: '0%' },
-                  { readiness: 'No / Not interested', count: 0, pct: '0%' },
-                ].map((row) => (
-                  <tr key={row.readiness} className="hover:bg-dark-700/50">
-                    <td className="p-3 font-bold text-white">{row.readiness}</td>
-                    <td className="p-3 font-mono text-slate-300">{row.count}</td>
-                    <td className="p-3 font-mono font-bold text-emerald-400">{row.pct}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+
+          <div className="lg:col-span-1">
+            <FeatureDemandChart data={featureChartData} />
+          </div>
+        </div>
+      </div>
+
+      {/* 3 & 4. ADOPTION READINESS & PRICING TABLES WITH CHARTS */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Adoption Card */}
+        <div className="glass-panel p-6 space-y-4">
+          <div className="flex items-center justify-between border-b border-dark-600 pb-2">
+            <h3 className="font-extrabold text-base text-white">
+              ADOPTION READINESS TABLE & CHART
+            </h3>
+            <button
+              onClick={exportAdoptionReadinessCSV}
+              className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 flex items-center space-x-1 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>CSV</span>
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            <div className="overflow-x-auto border border-dark-600 rounded-xl">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-dark-900 text-slate-400 border-b border-dark-600">
+                  <tr>
+                    <th className="p-3 font-bold text-white">Readiness Level</th>
+                    <th className="p-3 font-bold text-slate-300">Shops</th>
+                    <th className="p-3 font-bold text-emerald-400">Percentage</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-dark-600">
+                  {adoptionTableData.map((row) => (
+                    <tr key={row.readiness} className="hover:bg-dark-700/50">
+                      <td className="p-3 font-bold text-white">{row.readiness}</td>
+                      <td className="p-3 font-mono text-slate-300">{row.count}</td>
+                      <td className="p-3 font-mono font-bold text-emerald-400">{row.pct}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <AdoptionReadinessChart data={adoptionChartData} />
+          </div>
         </div>
 
-        {/* Pricing Table */}
+        {/* Pricing Card */}
         <div className="glass-panel p-6 space-y-4">
-          <h3 className="font-extrabold text-base text-white border-b border-dark-600 pb-2 flex items-center space-x-2">
-            <IndianRupee className="w-4 h-4 text-emerald-400" />
-            <span>PRICING TABLE</span>
-          </h3>
-          <div className="overflow-x-auto border border-dark-600 rounded-xl">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-dark-900 text-slate-400 border-b border-dark-600">
-                <tr>
-                  <th className="p-3 font-bold text-white">Price Range</th>
-                  <th className="p-3 font-bold text-slate-300">Shops</th>
-                  <th className="p-3 font-bold text-purple-300">Percentage</th>
-                  <th className="p-3 font-bold text-emerald-400">Ready to Start</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-dark-600">
-                {[
-                  { range: '₹2,000–₹5,000/month', count: totalInterviews || 1, pct: totalInterviews ? '100%' : '0%', ready: 'Yes' },
-                  { range: '₹1,000–₹2,000/month', count: 0, pct: '0%', ready: 'Yes' },
-                  { range: '₹500–₹1,000/month', count: 0, pct: '0%', ready: 'Yes' },
-                  { range: 'Below ₹500/month', count: 0, pct: '0%', ready: 'Yes' },
-                  { range: 'Above ₹5,000/month', count: 0, pct: '0%', ready: 'Yes' },
-                  { range: '₹0 — only if free', count: 0, pct: '0%', ready: 'No' },
-                  { range: 'Cannot decide yet', count: 0, pct: '0%', ready: 'Pending' },
-                ].map((p) => (
-                  <tr key={p.range} className="hover:bg-dark-700/50">
-                    <td className="p-3 font-bold text-white">{p.range}</td>
-                    <td className="p-3 font-mono text-slate-300">{p.count}</td>
-                    <td className="p-3 font-mono font-bold text-purple-300">{p.pct}</td>
-                    <td className="p-3 font-bold text-emerald-400">{p.ready}</td>
+          <div className="flex items-center justify-between border-b border-dark-600 pb-2">
+            <h3 className="font-extrabold text-base text-white flex items-center space-x-2">
+              <IndianRupee className="w-4 h-4 text-emerald-400" />
+              <span>PRICING TABLE & CHART</span>
+            </h3>
+            <button
+              onClick={exportPricingCSV}
+              className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 flex items-center space-x-1 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>CSV</span>
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            <div className="overflow-x-auto border border-dark-600 rounded-xl">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-dark-900 text-slate-400 border-b border-dark-600">
+                  <tr>
+                    <th className="p-3 font-bold text-white">Price Range</th>
+                    <th className="p-3 font-bold text-slate-300">Shops</th>
+                    <th className="p-3 font-bold text-purple-300">Percentage</th>
+                    <th className="p-3 font-bold text-emerald-400">Ready</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-dark-600">
+                  {pricingTableData.map((p) => (
+                    <tr key={p.range} className="hover:bg-dark-700/50">
+                      <td className="p-3 font-bold text-white">{p.range}</td>
+                      <td className="p-3 font-mono text-slate-300">{p.count}</td>
+                      <td className="p-3 font-mono font-bold text-purple-300">{p.pct}</td>
+                      <td className="p-3 font-bold text-emerald-400">{p.ready}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <PricingChart data={pricingChartData} />
           </div>
         </div>
       </div>

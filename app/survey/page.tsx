@@ -90,6 +90,12 @@ export default function SurveyPage() {
       return;
     }
 
+    const cleanedContact = contactNumber.replace(/\D/g, '');
+    if (cleanedContact.length !== 10) {
+      alert('Please enter a valid 10-digit contact number.');
+      return;
+    }
+
     setStartTime(Date.now());
     const createdShop = await createShop({
       shop_name: shopName,
@@ -422,13 +428,17 @@ export default function SurveyPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Contact Number</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Contact Number (10 Digits) *</label>
                 <input
-                  type="text"
-                  placeholder="+91 9876543210"
+                  type="tel"
+                  inputMode="numeric"
+                  pattern="[0-9]{10}"
+                  maxLength={10}
+                  required
+                  placeholder="9876543210"
                   value={contactNumber}
-                  onChange={(e) => setContactNumber(e.target.value)}
-                  className="w-full bg-dark-900 border border-dark-600 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none"
+                  onChange={(e) => setContactNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  className="w-full bg-dark-900 border border-dark-600 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none font-mono"
                 />
               </div>
 
