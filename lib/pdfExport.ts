@@ -13,6 +13,7 @@ export async function exportElementToPDF(elementId: string, filename: string): P
   const originalStyle = element.style.cssText;
   element.style.maxHeight = 'none';
   element.style.overflow = 'visible';
+  element.style.width = '794px'; // Fixed A4 width at 96 DPI
 
   try {
     const canvas = await html2canvas(element, {
@@ -21,8 +22,7 @@ export async function exportElementToPDF(elementId: string, filename: string): P
       allowTaint: true,
       logging: false,
       backgroundColor: '#0f172a',
-      windowWidth: element.scrollWidth,
-      windowHeight: element.scrollHeight,
+      windowWidth: 794,
     });
 
     element.style.cssText = originalStyle;
@@ -34,8 +34,8 @@ export async function exportElementToPDF(elementId: string, filename: string): P
       format: 'a4',
     });
 
-    const imgWidth = 210;
-    const pageHeight = 297;
+    const imgWidth = 210; // A4 width in mm
+    const pageHeight = 297; // A4 height in mm
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
     let heightLeft = imgHeight;
     let position = 0;
@@ -43,7 +43,7 @@ export async function exportElementToPDF(elementId: string, filename: string): P
     pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
     heightLeft -= pageHeight;
 
-    while (heightLeft >= 0) {
+    while (heightLeft > 5) { // Prevent creating trailing blank page if remainder is tiny
       position = heightLeft - imgHeight;
       pdf.addPage();
       pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
@@ -69,6 +69,7 @@ export async function sharePDFReport(elementId: string, filename: string, summar
   const originalStyle = element.style.cssText;
   element.style.maxHeight = 'none';
   element.style.overflow = 'visible';
+  element.style.width = '794px'; // Fixed A4 width at 96 DPI
 
   try {
     const canvas = await html2canvas(element, {
@@ -77,8 +78,7 @@ export async function sharePDFReport(elementId: string, filename: string, summar
       allowTaint: true,
       logging: false,
       backgroundColor: '#0f172a',
-      windowWidth: element.scrollWidth,
-      windowHeight: element.scrollHeight,
+      windowWidth: 794,
     });
 
     element.style.cssText = originalStyle;
@@ -99,7 +99,7 @@ export async function sharePDFReport(elementId: string, filename: string, summar
     pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
     heightLeft -= pageHeight;
 
-    while (heightLeft >= 0) {
+    while (heightLeft > 5) {
       position = heightLeft - imgHeight;
       pdf.addPage();
       pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);

@@ -121,121 +121,216 @@ export default function InterviewsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left List */}
-        <div className="lg:col-span-1 glass-panel p-4 space-y-3 max-h-[calc(100vh-180px)] overflow-y-auto">
-          <h3 className="font-bold text-sm text-white border-b border-dark-600 pb-2">Completed Surveys ({interviews.length})</h3>
-          {interviews.length > 0 ? (
-            interviews.map((inv) => (
-              <div
-                key={inv.id}
-                onClick={() => handleSelectInterview(inv.id)}
-                className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
-                  selectedId === inv.id
-                    ? 'bg-indigo-950/70 border-indigo-500 shadow-lg'
-                    : 'bg-dark-800 border-dark-600 hover:border-slate-500'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-bold text-indigo-300">{inv.interview_code}</span>
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/30">
-                    {inv.status || 'completed'}
-                  </span>
-                </div>
-                <div className="text-xs font-bold text-white mt-1.5">{inv.shop?.shop_name || 'Saree Shop'}</div>
-                <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
-                  <span>{inv.shop?.location || 'Location'}</span>
-                  <span className="font-mono font-bold text-indigo-400">{inv.overall_score || 0}% Score</span>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="p-6 text-center text-slate-400 text-xs italic">
-              {isLoading ? 'Loading records from Supabase...' : 'No completed survey records found.'}
+      {/* SURVEYS MAIN TABLE & DETAILS VIEW */}
+      <div className="space-y-6">
+        {/* TOP INTERVIEW TABLE */}
+        <div className="glass-panel p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-dark-600 pb-3">
+            <div>
+              <h3 className="font-extrabold text-base text-white flex items-center space-x-2">
+                <FileSpreadsheet className="w-5 h-5 text-indigo-400" />
+                <span>My Survey Submissions ({interviews.length})</span>
+              </h3>
+              <p className="text-xs text-slate-400">Complete list of shop discovery interviews with shop & client details</p>
             </div>
-          )}
+            <button
+              onClick={() => router.push('/survey')}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs flex items-center space-x-2 shadow-lg shadow-indigo-600/30"
+            >
+              <span>+ Conduct New Survey</span>
+            </button>
+          </div>
+
+          <div className="overflow-x-auto border border-dark-600 rounded-xl">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-dark-900 text-slate-400 border-b border-dark-600">
+                <tr>
+                  <th className="p-3 font-extrabold text-white">Code / Date</th>
+                  <th className="p-3 font-extrabold text-white">Shop & Client Details</th>
+                  <th className="p-3 font-extrabold text-slate-300">Location & Contact</th>
+                  <th className="p-3 font-extrabold text-slate-300">Score & Verdict</th>
+                  <th className="p-3 font-extrabold text-slate-300">Photo</th>
+                  <th className="p-3 font-extrabold text-center text-indigo-300">Report Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dark-600">
+                {interviews.length > 0 ? (
+                  interviews.map((inv) => {
+                    const shop = inv.shop || {};
+                    const isSelected = selectedId === inv.id;
+                    const photoUrl = inv.photo_url || inv.photo?.photo_url;
+
+                    const shareText = `🛍️ *GROVASTRA SHOP DISCOVERY REPORT*
+Shop: ${shop.shop_name || 'Saree Store'} (${shop.location || 'AP'})
+Client: ${shop.client_name || 'Valued Client'}
+Verdict: ${inv.verdict || 'Moderate Opportunity'} (${inv.overall_score || 0}% Score)
+Report Link: ${typeof window !== 'undefined' ? `${window.location.origin}/reports/shop?id=${inv.id}` : ''}`;
+
+                    return (
+                      <tr
+                        key={inv.id}
+                        className={`transition-all ${
+                          isSelected ? 'bg-indigo-950/40 font-medium' : 'hover:bg-dark-700/50'
+                        }`}
+                      >
+                        <td className="p-3">
+                          <div className="font-mono font-bold text-indigo-300 text-xs">{inv.interview_code}</div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">
+                            {new Date(inv.started_at || inv.created_at || Date.now()).toLocaleDateString()}
+                          </div>
+                        </td>
+
+                        <td className="p-3">
+                          <div className="font-extrabold text-white text-sm">{shop.shop_name || 'Saree Store'}</div>
+                          <div className="text-[11px] text-slate-300">Owner: {shop.client_name || 'Client'}</div>
+                        </td>
+
+                        <td className="p-3">
+                          <div className="text-slate-200 font-semibold">{shop.location || 'Vijayawada, AP'}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">{shop.contact_number || 'No contact'}</div>
+                        </td>
+
+                        <td className="p-3">
+                          <div className="font-mono font-extrabold text-indigo-300 text-sm">{inv.overall_score || 0}%</div>
+                          <span
+                            className={`inline-block mt-0.5 px-2 py-0.5 rounded text-[10px] font-bold ${
+                              inv.verdict === 'Significant Opportunity'
+                                ? 'bg-rose-950 text-rose-300 border border-rose-500/30'
+                                : 'bg-amber-950 text-amber-300 border border-amber-500/30'
+                            }`}
+                          >
+                            {inv.verdict || 'Moderate Opportunity'}
+                          </span>
+                        </td>
+
+                        <td className="p-3">
+                          {photoUrl ? (
+                            <img
+                              src={photoUrl}
+                              alt="Shop Photo"
+                              onClick={() => setPreviewPhotoUrl(photoUrl)}
+                              className="w-10 h-10 object-cover rounded-lg border border-dark-600 cursor-pointer hover:scale-105 transition-all"
+                            />
+                          ) : (
+                            <span className="text-[10px] text-slate-500 italic">No Photo</span>
+                          )}
+                        </td>
+
+                        <td className="p-3 text-center">
+                          <div className="flex items-center justify-center space-x-2">
+                            <button
+                              onClick={() => router.push(`/reports/shop?id=${inv.id}`)}
+                              className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold flex items-center space-x-1 shadow"
+                              title="View Interactive Report"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Report</span>
+                            </button>
+
+                            <button
+                              onClick={() => router.push(`/reports/shop?id=${inv.id}`)}
+                              className="p-1.5 bg-dark-700 hover:bg-dark-600 text-indigo-300 rounded-lg border border-indigo-500/30 cursor-pointer"
+                              title="Download PDF"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+
+                            <a
+                              href={`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="p-1.5 bg-emerald-950 hover:bg-emerald-900 text-emerald-300 rounded-lg border border-emerald-500/30 cursor-pointer"
+                              title="Share via WhatsApp"
+                            >
+                              <Share2 className="w-4 h-4" />
+                            </a>
+
+                            {role === 'ADMIN' && (
+                              <button
+                                onClick={() => setDeleteModalId(inv.id)}
+                                className="p-1.5 bg-rose-950 text-rose-300 border border-rose-500/30 hover:bg-rose-900 rounded-lg cursor-pointer"
+                                title="Delete Record"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-slate-400 italic">
+                      {isLoading ? 'Loading survey records from Supabase...' : 'No completed survey records found.'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {/* Right Detailed Preview Report */}
-        <div className="lg:col-span-2">
-          {reportData ? (
-            <div className="glass-panel p-6 space-y-6 bg-dark-800 border border-dark-600 rounded-2xl">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-dark-600 pb-4">
-                <div>
-                  <span className="text-xs font-mono text-indigo-400 font-bold">{reportData.interview?.interview_code || reportData.interview_code}</span>
-                  <h3 className="text-2xl font-extrabold text-white">{reportData.shop?.shop_name || 'Saree Store'}</h3>
-                  <p className="text-xs text-slate-400">
-                    Interviewer: {reportData.interviewer?.name || 'Navadeep'} | Location: {reportData.shop?.location || 'Vijayawada, AP'}
-                  </p>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => router.push(`/reports/shop?id=${selectedId}`)}
-                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold cursor-pointer flex items-center space-x-1"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>View Full Report</span>
-                  </button>
-
-                  <button
-                    onClick={() => router.push(`/reports/shop?id=${selectedId}`)}
-                    className="p-1.5 bg-dark-700 hover:bg-dark-600 text-slate-200 rounded-lg cursor-pointer"
-                    title="Print Report"
-                  >
-                    <Printer className="w-4 h-4 text-slate-300" />
-                  </button>
-
-                  {role === 'ADMIN' && (
-                    <button
-                      onClick={() => setDeleteModalId(selectedId)}
-                      className="p-1.5 bg-rose-950 text-rose-300 border border-rose-500/30 hover:bg-rose-900 rounded-lg cursor-pointer"
-                      title="Delete Survey Record"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
+        {/* SELECTED INTERVIEW PREVIEW PANEL */}
+        {reportData && (
+          <div className="glass-panel p-6 space-y-6 bg-dark-800 border border-dark-600 rounded-2xl">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-dark-600 pb-4">
+              <div>
+                <span className="text-xs font-mono text-indigo-400 font-bold">
+                  {reportData.interview?.interview_code || reportData.interview_code}
+                </span>
+                <h3 className="text-2xl font-extrabold text-white">
+                  {reportData.shop?.shop_name || 'Saree Store'}
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Client Owner: {reportData.shop?.client_name || 'Valued Client'} | Location: {reportData.shop?.location || 'Vijayawada, AP'}
+                </p>
               </div>
 
-              {/* Category Opportunity Cards */}
-              <div className="space-y-3">
-                <h4 className="font-extrabold text-sm text-white">Category Opportunity Breakdown</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                  {(reportData.categoryScores || []).map((cs: any) => (
-                    <div key={cs.id || cs.category_id} className="p-3 rounded-xl bg-dark-900 border border-dark-600 space-y-1">
-                      <div className="flex justify-between font-bold text-white uppercase">
-                        <span>{getCategoryName(cs.category_id)}</span>
-                        <span className="font-mono text-indigo-400">{cs.percentage}%</span>
-                      </div>
-                      <div className="text-[11px] text-slate-400">{cs.status}</div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => router.push(`/reports/shop?id=${reportData.interview?.id || selectedId}`)}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center space-x-2 shadow-lg"
+                >
+                  <Eye className="w-4 h-4" />
+                  <span>Open Full Shop Discovery Report</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Category Opportunity Cards */}
+            <div className="space-y-3">
+              <h4 className="font-extrabold text-sm text-white">Category Capability Breakdown</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                {(reportData.categoryScores || []).map((cs: any) => (
+                  <div key={cs.id || cs.category_id} className="p-3 rounded-xl bg-dark-900 border border-dark-600 space-y-1">
+                    <div className="flex justify-between font-bold text-white uppercase">
+                      <span>{getCategoryName(cs.category_id)}</span>
+                      <span className="font-mono text-indigo-400">{cs.percentage}%</span>
                     </div>
-                  ))}
-                </div>
+                    <div className="text-[11px] text-slate-400">{cs.status}</div>
+                  </div>
+                ))}
               </div>
+            </div>
 
-              {/* Shop Photograph */}
-              {(reportData.photo?.photo_url || reportData.photo_url) && (
-                <div className="space-y-2 border-t border-dark-600 pt-4">
-                  <h4 className="font-bold text-sm text-white flex items-center space-x-2">
-                    <Camera className="w-4 h-4 text-indigo-400" />
-                    <span>Storefront Reference Photograph</span>
-                  </h4>
-                  <img
-                    src={reportData.photo?.photo_url || reportData.photo_url}
-                    alt="Shop Photo Reference"
-                    className="max-h-56 rounded-xl border border-dark-600 object-cover cursor-pointer"
-                    onClick={() => setPreviewPhotoUrl(reportData.photo?.photo_url || reportData.photo_url)}
-                  />
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="glass-panel p-12 text-center text-slate-400 text-sm">
-              Select an interview from the left panel to view its breakdown.
-            </div>
-          )}
-        </div>
+            {/* Shop Photograph */}
+            {(reportData.photo?.photo_url || reportData.photo_url) && (
+              <div className="space-y-2 border-t border-dark-600 pt-4">
+                <h4 className="font-bold text-sm text-white flex items-center space-x-2">
+                  <Camera className="w-4 h-4 text-indigo-400" />
+                  <span>Storefront Reference Photograph</span>
+                </h4>
+                <img
+                  src={reportData.photo?.photo_url || reportData.photo_url}
+                  alt="Shop Photo Reference"
+                  className="max-h-56 rounded-xl border border-dark-600 object-cover cursor-pointer"
+                  onClick={() => setPreviewPhotoUrl(reportData.photo?.photo_url || reportData.photo_url)}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* SAME-PAGE PHOTO LIGHTBOX MODAL */}

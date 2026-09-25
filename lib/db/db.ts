@@ -411,9 +411,16 @@ export async function getAllInterviews(): Promise<Interview[]> {
       const res = await fetch('/api/surveys');
       if (res.ok) {
         const data = await res.json();
-        if (data.interviews) {
-          localStore.interviews = data.interviews;
-          return data.interviews;
+        if (data.interviews && Array.isArray(data.interviews)) {
+          const remoteMap = new Map((data.interviews || []).map((i: any) => [i.id, i]));
+          localStore.interviews.forEach((locInv) => {
+            if (!remoteMap.has(locInv.id)) {
+              remoteMap.set(locInv.id, locInv);
+            }
+          });
+          const merged = Array.from(remoteMap.values()) as Interview[];
+          localStore.interviews = merged;
+          return merged;
         }
       }
     } catch (err) {}
