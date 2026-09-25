@@ -1,61 +1,93 @@
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
+const A4_WIDTH_MM = 210;
+const A4_HEIGHT_MM = 297;
+const MARGIN_MM = 10; // 10mm margins all sides
+const CONTENT_WIDTH_MM = A4_WIDTH_MM - MARGIN_MM * 2;
+const CONTENT_HEIGHT_MM = A4_HEIGHT_MM - MARGIN_MM * 2;
+
+/**
+ * Captures an element as a high-quality canvas then slices it into A4 pages.
+ * Uses margin-aware positioning so content is never cut at the edge.
+ */
 export async function exportElementToPDF(elementId: string, filename: string): Promise<Blob | null> {
   if (typeof window === 'undefined') return null;
 
   const element = document.getElementById(elementId);
   if (!element) {
-    console.error(`Element with id ${elementId} not found`);
+    console.error(`Element with id "${elementId}" not found`);
     return null;
   }
 
-  const originalStyle = element.style.cssText;
-  element.style.maxHeight = 'none';
-  element.style.overflow = 'visible';
-  element.style.width = '794px'; // Fixed A4 width at 96 DPI
+  // Temporarily expand the element to full A4 width for capture
+  const savedStyle = element.getAttribute('style') || '';
+  element.style.cssText += '; width: 770px !important; max-width: 770px !important; border-radius: 0 !important; overflow: visible !important;';
 
   try {
+    await new Promise((r) => setTimeout(r, 120)); // Allow layout to settle
+
     const canvas = await html2canvas(element, {
-      scale: 2,
+      scale: 2,           // Retina quality
       useCORS: true,
       allowTaint: true,
       logging: false,
       backgroundColor: '#0f172a',
-      windowWidth: 794,
+      windowWidth: 770,
+      scrollY: -window.scrollY,
     });
 
-    element.style.cssText = originalStyle;
+    element.setAttribute('style', savedStyle);
 
-    const imgData = canvas.toDataURL('image/png');
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
       format: 'a4',
+      compress: true,
     });
 
-    const imgWidth = 210; // A4 width in mm
-    const pageHeight = 297; // A4 height in mm
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    let heightLeft = imgHeight;
-    let position = 0;
+    const imgData = canvas.toDataURL('image/png', 1.0);
 
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-    heightLeft -= pageHeight;
+    // Scale canvas pixels → mm (content area)
+    const pxPerMm = canvas.width / CONTENT_WIDTH_MM;
+    const contentHeightPx = CONTENT_HEIGHT_MM * pxPerMm;
+    const totalHeightPx = canvas.height;
 
-    while (heightLeft > 5) { // Prevent creating trailing blank page if remainder is tiny
-      position = heightLeft - imgHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
+    let sliceTop = 0; // px from top of original canvas
+    let pageNum = 0;
+
+    while (sliceTop < totalHeightPx) {
+      if (pageNum > 0) pdf.addPage();
+
+      const sliceHeight = Math.min(contentHeightPx, totalHeightPx - sliceTop);
+
+      // Create a temporary canvas for this page slice
+      const pageCanvas = document.createElement('canvas');
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = Math.ceil(contentHeightPx);
+      const ctx = pageCanvas.getContext('2d')!;
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+      ctx.drawImage(canvas, 0, sliceTop, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+
+      const pageImgData = pageCanvas.toDataURL('image/png', 1.0);
+      const renderHeight = (sliceHeight / pxPerMm);
+
+      pdf.addImage(pageImgData, 'PNG', MARGIN_MM, MARGIN_MM, CONTENT_WIDTH_MM, renderHeight);
+
+      sliceTop += contentHeightPx;
+      pageNum++;
+
+      // Safety: stop if too many pages
+      if (pageNum > 20) break;
     }
 
     pdf.save(`${filename}.pdf`);
     return pdf.output('blob');
   } catch (error) {
-    element.style.cssText = originalStyle;
+    element.setAttribute('style', savedStyle);
     console.error('PDF Generation Error:', error);
-    alert('Failed to generate PDF. You can also use Print Report -> Save as PDF.');
+    alert('PDF generation failed. Try Print → Save as PDF instead.');
     return null;
   }
 }
@@ -63,56 +95,12 @@ export async function exportElementToPDF(elementId: string, filename: string): P
 export async function sharePDFReport(elementId: string, filename: string, summaryText: string) {
   if (typeof window === 'undefined') return;
 
-  const element = document.getElementById(elementId);
-  if (!element) return;
+  const pdfBlob = await exportElementToPDF(elementId, filename);
 
-  const originalStyle = element.style.cssText;
-  element.style.maxHeight = 'none';
-  element.style.overflow = 'visible';
-  element.style.width = '794px'; // Fixed A4 width at 96 DPI
-
-  try {
-    const canvas = await html2canvas(element, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      backgroundColor: '#0f172a',
-      windowWidth: 794,
-    });
-
-    element.style.cssText = originalStyle;
-
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4',
-    });
-
-    const imgWidth = 210;
-    const pageHeight = 297;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    let heightLeft = imgHeight;
-    let position = 0;
-
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-    heightLeft -= pageHeight;
-
-    while (heightLeft > 5) {
-      position = heightLeft - imgHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-    }
-
-    const pdfBlob = pdf.output('blob');
+  if (pdfBlob) {
     const pdfFile = new File([pdfBlob], `${filename}.pdf`, { type: 'application/pdf' });
 
-    // Save PDF file locally
-    pdf.save(`${filename}.pdf`);
-
-    // Web Share API if supported
+    // Try native share with file
     if (
       typeof navigator !== 'undefined' &&
       navigator.share &&
@@ -121,26 +109,20 @@ export async function sharePDFReport(elementId: string, filename: string, summar
     ) {
       try {
         await navigator.share({
-          title: 'Grovastra Discovery PDF Report',
+          title: 'Grovastra Shop Discovery Report',
           text: summaryText,
           files: [pdfFile],
         });
         return;
       } catch (err) {
-        console.log('Native file share fallback:', err);
+        console.log('Native share fallback to WhatsApp:', err);
       }
     }
-
-    // Fallback to WhatsApp link share
-    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(
-      summaryText + '\n\n📄 [Official PDF Report document generated and saved to downloads]'
-    )}`;
-    window.open(waUrl, '_blank');
-  } catch (err) {
-    element.style.cssText = originalStyle;
-    console.error('Error sharing PDF:', err);
-    // Fallback to WhatsApp link share without canvas
-    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(summaryText)}`;
-    window.open(waUrl, '_blank');
   }
+
+  // Fallback: WhatsApp link share
+  const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(
+    summaryText + '\n\n📄 PDF Report has been saved to your downloads.'
+  )}`;
+  window.open(waUrl, '_blank');
 }

@@ -206,28 +206,75 @@ html.light .bg-emerald-600 * {
 }
 
 /* =========================================================
-   CLEAN PRINT / PDF MEDIA STYLES (ONLY ACTIVE WHEN PRINTING)
+   CLEAN PRINT / PDF MEDIA STYLES
    ========================================================= */
 @media print {
-  /* Hide application header, sidebar, and non-print elements */
+  @page {
+    size: A4 portrait;
+    margin: 12mm 14mm;
+  }
+
+  /* Hide app chrome */
   header,
   aside,
   nav,
-  .no-print {
+  .no-print,
+  footer {
     display: none !important;
   }
 
   body {
-    background-color: #ffffff !important;
+    background: #ffffff !important;
     color: #0f172a !important;
+    font-size: 11px !important;
+    line-height: 1.5 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
-  #printable-shop-report,
-  #printable-executive-report,
-  #printable-shop-report *,
-  #printable-executive-report * {
+  /* Make report fill the page */
+  #printable-shop-report {
+    width: 100% !important;
+    max-width: 100% !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    page-break-after: always;
+  }
+
+  /* Force readable text colours */
+  #printable-shop-report * {
     color: #0f172a !important;
     text-shadow: none !important;
     box-shadow: none !important;
+  }
+
+  #printable-shop-report thead {
+    background: #f1f5f9 !important;
+  }
+
+  #printable-shop-report table {
+    border-collapse: collapse !important;
+  }
+
+  #printable-shop-report th,
+  #printable-shop-report td {
+    border: 1px solid #cbd5e1 !important;
+    padding: 6px 8px !important;
+    font-size: 10px !important;
+  }
+
+  /* Prevent breaking inside rows/cards */
+  #printable-shop-report tr,
+  #printable-shop-report .recommendation-item {
+    page-break-inside: avoid !important;
+  }
+
+  #printable-shop-report h3,
+  #printable-shop-report h4 {
+    page-break-after: avoid !important;
   }
 }
