@@ -262,7 +262,9 @@ export default function SurveyPage() {
       const scoreRows = categorySummaries.map((cs) => ({
         id: crypto.randomUUID(),
         interview_id: interviewId,
-        category_id: cs.categoryId,
+        category_id: cs.categoryId,        // stored as "cat-verify"
+        category_code: cs.categoryCode,    // stored as "VERIFY" for reliable dashboard matching
+        categoryCode: cs.categoryCode,     // camelCase alias for frontend matching
         total_score: cs.totalScore,
         maximum_score: cs.maximumScore,
         percentage: cs.percentage,

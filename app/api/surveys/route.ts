@@ -98,7 +98,8 @@ export async function POST(request: Request) {
       await saveCategoryScoresSupabase(categoryScores.map((cs: any) => ({
         id: cs.id || crypto.randomUUID(),
         interview_id: savedInterview.id,
-        category_id: cs.category_id || cs.categoryId,
+        category_id: cs.category_id || cs.categoryId || '',
+        category_code: (cs.category_code || cs.categoryCode || cs.category_id || '').replace(/^cat-/, '').toUpperCase(),
         total_score: Number(cs.total_score ?? cs.totalScore ?? 0),
         maximum_score: Number(cs.maximum_score ?? cs.maximumScore ?? 6),
         percentage: Number(cs.percentage ?? 0),

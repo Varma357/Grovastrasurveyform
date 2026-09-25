@@ -80,9 +80,22 @@ export default function DashboardPage() {
         const data = await res.json();
         if (data.interviews) {
           setInterviews(data.interviews);
-          const shopList = data.interviews.map((inv: any) => inv.shop).filter(Boolean);
-          const uniqueShops = Array.from(new Map(shopList.map((s: any) => [s.id, s])).values());
-          setShops(uniqueShops);
+          // Extract shops: prefer inv.shop object, fallback to constructing from inv fields
+          const shopList: any[] = [];
+          const seenIds = new Set<string>();
+          data.interviews.forEach((inv: any) => {
+            const shopId = inv.shop?.id || inv.shop_id;
+            if (shopId && !seenIds.has(shopId)) {
+              seenIds.add(shopId);
+              if (inv.shop) {
+                shopList.push(inv.shop);
+              } else {
+                // Minimal shop object from interview fields
+                shopList.push({ id: shopId, shop_name: 'Shop', location: '' });
+              }
+            }
+          });
+          setShops(shopList);
         }
       }
     } catch (err) {
@@ -153,7 +166,12 @@ export default function DashboardPage() {
   );
 
   // Section Metrics
-  const totalShops = shops.length;
+  // Count unique shops from both the shops state AND from interview shop_ids (robust fallback)
+  const uniqueShopIds = new Set([
+    ...shops.map((s: any) => s.id),
+    ...filteredInterviews.map((inv: any) => inv.shop_id || inv.shop?.id).filter(Boolean),
+  ]);
+  const totalShops = uniqueShopIds.size;
   const totalInterviews = filteredInterviews.length;
 
   const readyCount = filteredInterviews.filter(
@@ -161,17 +179,27 @@ export default function DashboardPage() {
   ).length;
   const notReadyCount = Math.max(0, totalInterviews - readyCount);
 
-  const towns = Array.from(new Set(shops.map((s) => s.location).filter(Boolean)));
+  const towns = Array.from(new Set([
+    ...shops.map((s) => s.location),
+    ...filteredInterviews.map((inv: any) => inv.shop?.location),
+  ].filter(Boolean)));
   const dates = Array.from(new Set(interviews.map((i) => new Date(i.started_at).toISOString().split('T')[0]).filter(Boolean)));
 
-  // Helper to retrieve category score from an interview with flexible matching
+  // Helper to retrieve category score from an interview — matches by multiple fields robustly
   const getCategoryScoreObj = (inv: any, catCode: string) => {
-    if (!inv.categoryScores || !Array.isArray(inv.categoryScores)) return null;
-    const codeLower = catCode.toLowerCase();
-    return inv.categoryScores.find((cs: any) => {
-      const csCat = (cs.category_id || cs.category_code || '').toLowerCase().replace(/^cat-/, '');
-      return csCat === codeLower;
-    });
+    const scores = inv.categoryScores || inv.category_scores || inv.scores || [];
+    if (!Array.isArray(scores) || scores.length === 0) return null;
+    const codeLower = catCode.toLowerCase().trim();
+    return scores.find((cs: any) => {
+      if ((cs.category_code || '').toLowerCase().trim() === codeLower) return true;
+      if ((cs.categoryCode || '').toLowerCase().trim() === codeLower) return true;
+      const strippedId = (cs.category_id || '').toLowerCase().replace(/^cat-/, '').trim();
+      if (strippedId === codeLower) return true;
+      if ((cs.category_name || '').toLowerCase().trim() === codeLower) return true;
+      if ((cs.name || '').toLowerCase().trim() === codeLower) return true;
+      if ((cs.category_id || '').toLowerCase().includes(codeLower)) return true;
+      return false;
+    }) || null;
   };
 
   // Dynamic Category Analysis Data
@@ -197,20 +225,22 @@ export default function DashboardPage() {
       }
     });
 
-    const sampleN = catCount || filteredInterviews.length;
-    const avgPct = sampleN > 0 ? Math.round(catTotalPct / sampleN) : 0;
+    // Use totalInterviews as sampleN so percentages relate to all surveys
+    const sampleN = filteredInterviews.length;
+    const avgPct = catCount > 0 ? Math.round(catTotalPct / catCount) : 0;
 
     return {
       category_code: cat.category_code,
       category_name: cat.category_name,
       description: cat.description,
       sampleN,
-      avgScoreStr: `${((avgPct / 100) * 3).toFixed(1)} / 3`,
+      avgScoreStr: catCount > 0 ? `${((avgPct / 100) * 3).toFixed(1)} / 3` : '— / 3',
       avgPct,
       strongCount,
       modCount,
       sigCount,
       conditionalFollowups,
+      catCount,
     };
   });
 
@@ -697,21 +727,20 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
                       {/* 9 Category Score Pill Cells */}
                       {SEED_CATEGORIES.map((cat) => {
                         const sc = getCategoryScoreObj(inv, cat.category_code);
-                        if (!sc) return <td key={cat.category_code} className="p-3 text-slate-500 text-[10px] italic">-</td>;
-
-                        const pct = sc.percentage ?? 0;
-                        const status = sc.status || 'Moderate Opportunity';
+                        const pct = sc?.percentage ?? (inv.overall_score || 0);
+                        const status = sc?.status || (pct >= 80 ? 'Ready / High' : pct >= 50 ? 'Moderate Opportunity' : 'Significant Opportunity');
 
                         return (
                           <td key={cat.category_code} className="p-3 font-mono">
                             <span
                               className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                status === 'Significant Opportunity'
+                                status === 'Significant Opportunity' || status.includes('Significant')
                                   ? 'bg-rose-950/80 text-rose-300 border border-rose-500/30'
-                                  : status === 'Moderate Opportunity'
+                                  : status === 'Moderate Opportunity' || status.includes('Moderate')
                                   ? 'bg-amber-950/80 text-amber-300 border border-amber-500/30'
                                   : 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/30'
                               }`}
+                              title={sc ? `${cat.category_name}: ${pct}% (${status})` : `Estimated score: ${pct}%`}
                             >
                               {pct}%
                             </span>
