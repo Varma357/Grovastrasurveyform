@@ -1,14 +1,25 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { UserCheck, ShieldCheck, UserPlus, Trash2, Mail, Phone, Lock, Sparkles, Store, FileText, CheckCircle } from 'lucide-react';
-import { EmployeeUser, UserRole } from '@/lib/types';
-import { getAllEmployeesAsync, addEmployee, deleteEmployee, getAllInterviews, getAllShops } from '@/lib/db/db';
+import { UserCheck, ShieldCheck, UserPlus, Trash2, Mail, Phone, Lock, Sparkles, Store, FileText, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { UserRole } from '@/lib/types';
+
+interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  mobile: string;
+  role: string;
+  active: boolean;
+  created_at: string;
+}
 
 export default function AdminTeamPage() {
-  const [employees, setEmployees] = useState<EmployeeUser[]>([]);
+  const [employees, setEmployees] = useState<TeamMember[]>([]);
   const [interviews, setInterviews] = useState<any[]>([]);
   const [shops, setShops] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
 
   // Add Employee Form State
   const [name, setName] = useState('');
@@ -17,67 +28,102 @@ export default function AdminTeamPage() {
   const [role, setRole] = useState<UserRole>('INTERVIEWER');
   const [password, setPassword] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
     loadData();
   }, []);
 
   const loadData = async () => {
-    const emps = await getAllEmployeesAsync();
-    const invs = await getAllInterviews();
-    const shps = await getAllShops();
-    setEmployees(emps);
-    setInterviews(invs);
-    setShops(shps);
+    setIsLoading(true);
+    setErrorMsg('');
+    try {
+      // Load team from Supabase API
+      const [teamRes, surveyRes] = await Promise.all([
+        fetch('/api/team'),
+        fetch('/api/surveys'),
+      ]);
+
+      if (teamRes.ok) {
+        const teamData = await teamRes.json();
+        setEmployees(teamData.team || []);
+      } else {
+        setErrorMsg('Could not load team members from Supabase.');
+      }
+
+      if (surveyRes.ok) {
+        const surveyData = await surveyRes.json();
+        const invs = surveyData.interviews || [];
+        setInterviews(invs);
+        const shopList = invs.map((inv: any) => inv.shop).filter(Boolean);
+        const uniqueShops = Array.from(new Map(shopList.map((s: any) => [s.id, s])).values());
+        setShops(uniqueShops);
+      }
+    } catch (err) {
+      setErrorMsg('Network error loading team data.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleCreateEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !email.trim() || !mobile.trim() || !password.trim()) {
-      return;
+    if (!name.trim() || !email.trim() || !mobile.trim() || !password.trim()) return;
+    setIsCreating(true);
+    setErrorMsg('');
+
+    try {
+      const res = await fetch('/api/team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, mobile, role, password }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.member) {
+        setSuccessMsg(`✅ Team member "${data.member.name}" created! They can now log in with their email/mobile + password.`);
+        setName(''); setEmail(''); setMobile(''); setPassword('');
+        await loadData();
+        setTimeout(() => setSuccessMsg(''), 6000);
+      } else {
+        setErrorMsg(data.error || 'Failed to create team member.');
+      }
+    } catch (err) {
+      setErrorMsg('Network error creating team member.');
+    } finally {
+      setIsCreating(false);
     }
-
-    const created = await addEmployee({
-      name,
-      email,
-      mobile,
-      role,
-      password,
-    });
-
-    setSuccessMsg(`Team member "${created.name}" created successfully with role ${created.role}!`);
-    setName('');
-    setEmail('');
-    setMobile('');
-    setPassword('');
-    loadData();
-
-    setTimeout(() => setSuccessMsg(''), 4000);
   };
 
-  const handleDeleteEmployee = (id: string, empName: string) => {
-    if (confirm(`Are you sure you want to remove team member "${empName}"?`)) {
-      deleteEmployee(id);
-      loadData();
+  const handleDeleteEmployee = async (id: string, empName: string) => {
+    if (!confirm(`Remove team member "${empName}"? They will no longer be able to log in.`)) return;
+
+    try {
+      const res = await fetch(`/api/team?id=${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok) {
+        await loadData();
+      } else {
+        setErrorMsg(data.error || 'Failed to delete team member.');
+      }
+    } catch (err) {
+      setErrorMsg('Network error deleting team member.');
     }
   };
 
   // Helper to calculate total interviews completed by an employee
-  const getWorkStats = (emp: EmployeeUser) => {
+  const getWorkStats = (emp: TeamMember) => {
     const empInvs = interviews.filter(
       (inv) =>
         inv.interviewer_id === emp.id ||
         inv.interviewer?.email?.toLowerCase() === emp.email.toLowerCase() ||
         inv.interviewer?.name?.toLowerCase() === emp.name.toLowerCase()
     );
-
     const shopsCovered = new Set(empInvs.map((inv) => inv.shop_id)).size;
-
-    return {
-      interviewsCount: empInvs.length,
-      shopsCount: shopsCovered,
-    };
+    return { interviewsCount: empInvs.length, shopsCount: shopsCovered };
   };
+
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto pb-12">
@@ -85,14 +131,31 @@ export default function AdminTeamPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-dark-600 pb-4">
         <div>
           <div className="flex items-center space-x-2">
-            <h2 className="text-2xl font-extrabold text-white tracking-tight">TEAM & EMPLOYEE WORK MANAGEMENT</h2>
+            <h2 className="text-2xl font-extrabold text-white tracking-tight">TEAM & EMPLOYEE MANAGEMENT</h2>
             <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-              Admin Access Only
+              Supabase Persisted
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">Register team members, assign Admin or Interviewer roles, and track field survey work output.</p>
+          <p className="text-xs text-slate-400 mt-0.5">Team members saved to Supabase — they can login from any device, any session.</p>
         </div>
+        <button
+          onClick={loadData}
+          disabled={isLoading}
+          className="flex items-center space-x-1.5 px-3 py-2 bg-dark-800 border border-dark-600 text-slate-300 hover:text-white rounded-lg text-xs font-bold transition-all cursor-pointer"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-indigo-400' : ''}`} />
+          <span>{isLoading ? 'Refreshing…' : 'Refresh'}</span>
+        </button>
       </div>
+
+      {/* Error Banner */}
+      {errorMsg && (
+        <div className="p-3.5 bg-rose-950/60 border border-rose-500/40 rounded-xl text-xs text-rose-300 flex items-start space-x-2.5">
+          <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
 
       {/* Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -205,10 +268,11 @@ export default function AdminTeamPage() {
           <div className="lg:col-span-5 flex justify-end">
             <button
               type="submit"
-              className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold rounded-xl shadow-lg shadow-indigo-600/30 flex items-center space-x-2"
+              disabled={isCreating}
+              className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-xs font-extrabold rounded-xl shadow-lg shadow-indigo-600/30 flex items-center space-x-2 cursor-pointer"
             >
               <UserPlus className="w-4 h-4" />
-              <span>Register Team Member</span>
+              <span>{isCreating ? 'Saving to Supabase…' : 'Register Team Member'}</span>
             </button>
           </div>
         </form>

@@ -37,6 +37,9 @@ import {
   FeatureDemandChart,
   AdoptionReadinessChart,
   PricingChart,
+  CategoryRadarChart,
+  SurveyTimelineChart,
+  VerdictDistributionChart,
 } from '@/components/dashboard/DashboardCharts';
 
 export default function DashboardPage() {
@@ -284,26 +287,37 @@ export default function DashboardPage() {
   }));
 
   // Dynamic Pricing Analysis Table & Chart Data
+  // Normalize price ranges: collect all unique ranges from actual survey data
+  const allPriceRanges = Array.from(
+    new Set(
+      filteredInterviews
+        .map((inv) => inv.purchaseIntent?.price_range)
+        .filter(Boolean)
+    )
+  );
+
+  // Canonical price ranges config (covers all known survey values)
   const priceRangesConfig = [
     { range: '₹2,000–₹5,000/month', ready: 'Yes' },
-    { range: '₹500–₹2,000/month', ready: 'Yes' },
+    { range: '₹1,000–₹2,000/month', ready: 'Yes' },
+    { range: '₹500–₹1,000/month', ready: 'Yes' },
+    { range: 'Below ₹500/month', ready: 'Yes' },
     { range: '₹5,000–₹10,000/month', ready: 'Yes' },
     { range: 'Above ₹10,000/month', ready: 'Yes' },
     { range: '₹0 — only if free', ready: 'No' },
     { range: 'Cannot decide yet', ready: 'Pending' },
   ];
 
+  // Add any ranges found in survey data that are not in the canonical config
+  allPriceRanges.forEach((r) => {
+    if (!priceRangesConfig.find((c) => c.range === r)) {
+      priceRangesConfig.push({ range: r, ready: 'Yes' });
+    }
+  });
+
   const pricingTableData = priceRangesConfig.map((item) => {
     const count = filteredInterviews.filter((inv) => {
-      const val = inv.purchaseIntent?.price_range || '';
-      if (item.range === '₹500–₹2,000/month') {
-        return (
-          val === '₹500–₹2,000/month' ||
-          val === '₹500–₹1,000/month' ||
-          val === '₹1,000–₹2,000/month' ||
-          val === 'Below ₹500/month'
-        );
-      }
+      const val = (inv.purchaseIntent?.price_range || '').trim();
       return val === item.range;
     }).length;
 
@@ -317,10 +331,15 @@ export default function DashboardPage() {
     };
   });
 
-  const pricingChartData = pricingTableData.map((d) => ({
-    name: d.range,
-    value: d.count,
-  }));
+  const pricingChartData = pricingTableData
+    .filter((d) => d.count > 0)
+    .map((d) => ({ name: d.range, value: d.count }));
+
+  // Most selected price range from actual data
+  const mostSelectedPriceRange = pricingTableData.reduce(
+    (best, cur) => (cur.count > best.count ? cur : best),
+    { range: 'N/A', count: 0, pct: '0%', pctNum: 0, ready: '' }
+  );
 
   // Export Main Survey Records CSV
   const exportSurveyRecordsCSV = () => {
@@ -447,7 +466,7 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
         </div>
       </div>
 
-      {/* KPI CARDS */}
+      {/* KPI CARDS — all values computed from live survey data */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="glass-card p-4 rounded-xl border border-dark-600 space-y-1">
           <div className="flex items-center justify-between">
@@ -460,11 +479,24 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
 
         <div className="glass-card p-4 rounded-xl border border-dark-600 space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400">Feature Acceptance</span>
+            <span className="text-xs font-semibold text-slate-400">Adoption Ready</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-2xl font-extrabold text-emerald-400">{readyCount} <span className="text-xs text-slate-300 font-normal">Ready</span></div>
-          <div className="text-[11px] text-slate-500">Not Ready: {notReadyCount} Shops</div>
+          {(() => {
+            // Count shops that said ready in purchase intent
+            const readyIntentCount = filteredInterviews.filter((inv) => {
+              const rl = (inv.purchaseIntent?.readiness_level || '').toLowerCase();
+              return rl.includes('ready') || rl.includes('yes');
+            }).length;
+            const notReadyIntentCount = totalInterviews - readyIntentCount;
+            const readyPct = totalInterviews > 0 ? Math.round((readyIntentCount / totalInterviews) * 100) : 0;
+            return (
+              <>
+                <div className="text-2xl font-extrabold text-emerald-400">{readyIntentCount} <span className="text-xs text-slate-300 font-normal">Ready ({readyPct}%)</span></div>
+                <div className="text-[11px] text-slate-500">Not Ready: {notReadyIntentCount} Shops</div>
+              </>
+            );
+          })()}
         </div>
 
         <div className="glass-card p-4 rounded-xl border border-dark-600 space-y-1">
@@ -472,8 +504,19 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
             <span className="text-xs font-semibold text-slate-400">Top Pain Area</span>
             <AlertTriangle className="w-4 h-4 text-rose-400" />
           </div>
-          <div className="text-lg font-extrabold text-indigo-300">VERIFY</div>
-          <div className="text-[11px] text-rose-400 font-semibold">Identity Trust & Verification</div>
+          {(() => {
+            // Find category with highest avg opportunity score from actual data
+            const topCat = categoryAnalysisData.reduce(
+              (best, cur) => (cur.avgPct > best.avgPct ? cur : best),
+              { category_code: 'N/A', category_name: 'No Data', avgPct: 0 }
+            );
+            return (
+              <>
+                <div className="text-lg font-extrabold text-indigo-300 truncate">{topCat.category_code}</div>
+                <div className="text-[11px] text-rose-400 font-semibold truncate">{topCat.category_name} — {topCat.avgPct}%</div>
+              </>
+            );
+          })()}
         </div>
 
         <div className="glass-card p-4 rounded-xl border border-dark-600 space-y-1">
@@ -481,8 +524,18 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
             <span className="text-xs font-semibold text-slate-400">Avg Survey Duration</span>
             <Clock className="w-4 h-4 text-amber-400" />
           </div>
-          <div className="text-2xl font-extrabold text-amber-400">16.4 <span className="text-xs font-normal text-slate-300">Mins</span></div>
-          <div className="text-[11px] text-slate-500">Field Efficiency Index</div>
+          {(() => {
+            const durationsWithData = filteredInterviews.filter((inv) => inv.duration_minutes > 0);
+            const avgDur = durationsWithData.length > 0
+              ? (durationsWithData.reduce((sum, inv) => sum + (inv.duration_minutes || 0), 0) / durationsWithData.length).toFixed(1)
+              : '—';
+            return (
+              <>
+                <div className="text-2xl font-extrabold text-amber-400">{avgDur} <span className="text-xs font-normal text-slate-300">Mins</span></div>
+                <div className="text-[11px] text-slate-500">Field Efficiency Index ({durationsWithData.length} surveys)</div>
+              </>
+            );
+          })()}
         </div>
 
         <div className="glass-card p-4 rounded-xl border border-dark-600 space-y-1">
@@ -490,8 +543,12 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
             <span className="text-xs font-semibold text-slate-400">Most Selected Price</span>
             <IndianRupee className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-base font-extrabold text-emerald-300">₹2,000–₹5,000/mo</div>
-          <div className="text-[11px] text-slate-500">Acceptable Monthly Price</div>
+          <div className="text-xs font-extrabold text-emerald-300 leading-tight">
+            {mostSelectedPriceRange.range !== 'N/A' ? mostSelectedPriceRange.range : 'No data yet'}
+          </div>
+          <div className="text-[11px] text-slate-500">
+            {mostSelectedPriceRange.count > 0 ? `${mostSelectedPriceRange.count} shop(s) — ${mostSelectedPriceRange.pct}` : 'No price data'}
+          </div>
         </div>
       </div>
 
@@ -955,7 +1012,104 @@ Research survey completed. Recommended exploration in digital cataloguing, selle
         </div>
       </div>
 
+      {/* ===== ADVANCED ANALYTICS SECTION (Admin Interactive Charts) ===== */}
+      {(() => {
+        // Radar chart data: avg category score across all filtered surveys
+        const radarData = categoryAnalysisData.map((cat) => ({
+          category: cat.category_code,
+          score: cat.avgPct,
+        }));
+
+        // Timeline chart data: group surveys by date
+        const timelineMap = new Map<string, { count: number; totalScore: number }>();
+        filteredInterviews.forEach((inv) => {
+          const d = new Date(inv.started_at).toISOString().split('T')[0];
+          if (!timelineMap.has(d)) timelineMap.set(d, { count: 0, totalScore: 0 });
+          const entry = timelineMap.get(d)!;
+          entry.count += 1;
+          entry.totalScore += inv.overall_score || 0;
+        });
+        const timelineData = Array.from(timelineMap.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([date, val]) => ({
+            date,
+            count: val.count,
+            avgScore: val.count > 0 ? Math.round(val.totalScore / val.count) : 0,
+          }));
+
+        // Verdict distribution data
+        const verdictCounts = {
+          'Strong Current Process': 0,
+          'Moderate Opportunity': 0,
+          'Significant Opportunity': 0,
+        };
+        filteredInterviews.forEach((inv) => {
+          const v = inv.verdict as keyof typeof verdictCounts;
+          if (v && v in verdictCounts) verdictCounts[v]++;
+        });
+        const verdictData = Object.entries(verdictCounts).map(([name, value]) => ({ name, value }));
+
+        return (
+          <div className="glass-panel p-6 space-y-5 border border-indigo-500/10">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-dark-600 pb-3">
+              <div>
+                <h3 className="font-extrabold text-lg text-white flex items-center space-x-2">
+                  <BarChart3 className="w-5 h-5 text-indigo-400" />
+                  <span>ADVANCED ANALYTICS</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 ml-2">
+                    Live Survey Intelligence
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Radar, timeline & verdict analysis — all computed from {filteredInterviews.length} survey record(s)
+                </p>
+              </div>
+            </div>
+
+            {/* Row 1: Radar + Verdict + Timeline */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+              <CategoryRadarChart data={radarData} />
+              <VerdictDistributionChart data={verdictData} />
+              <SurveyTimelineChart data={timelineData} />
+            </div>
+
+            {/* Row 2: Summary KPI mini-cards computed from data */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-dark-600">
+              <div className="p-3 rounded-xl bg-dark-900 border border-indigo-500/20 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Avg Overall Score</div>
+                <div className="text-xl font-extrabold text-indigo-300">
+                  {filteredInterviews.length > 0
+                    ? `${Math.round(filteredInterviews.reduce((s, i) => s + (i.overall_score || 0), 0) / filteredInterviews.length)}%`
+                    : '—'}
+                </div>
+              </div>
+              <div className="p-3 rounded-xl bg-dark-900 border border-emerald-500/20 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Conditional Surveys</div>
+                <div className="text-xl font-extrabold text-emerald-300">
+                  {filteredInterviews.filter((i) => i.optional_completed).length}
+                  <span className="text-xs font-normal text-slate-400 ml-1">/ {filteredInterviews.length}</span>
+                </div>
+              </div>
+              <div className="p-3 rounded-xl bg-dark-900 border border-amber-500/20 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Walk-in Surveys</div>
+                <div className="text-xl font-extrabold text-amber-300">
+                  {filteredInterviews.filter((i) => i.is_walkin !== false).length}
+                  <span className="text-xs font-normal text-slate-400 ml-1">/ {filteredInterviews.length}</span>
+                </div>
+              </div>
+              <div className="p-3 rounded-xl bg-dark-900 border border-rose-500/20 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Towns Covered</div>
+                <div className="text-xl font-extrabold text-rose-300">
+                  {Array.from(new Set(filteredInterviews.map((i) => i.shop?.location).filter(Boolean))).length}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* SAME-PAGE PHOTO LIGHTBOX MODAL */}
+
       {previewPhotoUrl && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-dark-800 border border-dark-600 rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-2xl">

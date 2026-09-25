@@ -25,9 +25,15 @@ CREATE TABLE IF NOT EXISTS public.interviewers (
   name       TEXT NOT NULL,
   email      TEXT NOT NULL UNIQUE,
   mobile     TEXT DEFAULT '',
+  role       TEXT NOT NULL DEFAULT 'INTERVIEWER',
+  password   TEXT DEFAULT '352004',
   active     BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Add columns if upgrading existing database
+ALTER TABLE public.interviewers ADD COLUMN IF NOT EXISTS role     TEXT NOT NULL DEFAULT 'INTERVIEWER';
+ALTER TABLE public.interviewers ADD COLUMN IF NOT EXISTS password TEXT DEFAULT '352004';
 
 -- 3. INTERVIEWS
 CREATE TABLE IF NOT EXISTS public.interviews (
@@ -192,8 +198,14 @@ CREATE POLICY "service_role_all_purchase_intent"  ON public.purchase_intent  FOR
 CREATE POLICY "service_role_all_shop_photos"      ON public.shop_photos      FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 -- =============================================================
--- SEED: Default Interviewer
+-- SEED: Default Users
 -- =============================================================
-INSERT INTO public.interviewers (id, name, email, mobile, active)
-VALUES ('a0000000-0000-0000-0000-000000000001', 'Navadeep', 'navadeep@groviews.com', '9704917189', true)
-ON CONFLICT (email) DO NOTHING;
+INSERT INTO public.interviewers (id, name, email, mobile, role, password, active)
+VALUES
+  ('a0000000-0000-0000-0000-000000000001', 'Navadeep', 'navadeep@groviews.com', '9704917189', 'INTERVIEWER', '9704917189', true),
+  ('a0000000-0000-0000-0000-000000000002', 'Rajesh',   'rajesh@groviews.com',   '7901003210', 'ADMIN',       '7901003210', true)
+ON CONFLICT (email) DO UPDATE SET
+  role     = EXCLUDED.role,
+  password = EXCLUDED.password,
+  mobile   = EXCLUDED.mobile,
+  active   = EXCLUDED.active;
