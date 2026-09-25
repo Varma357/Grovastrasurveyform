@@ -1,244 +1,186 @@
--- =========================================================
--- GROVASTRA SAREE SHOP SURVEY ANALYTICS PLATFORM
--- SUPABASE POSTGRESQL MASTER DDL SCHEMA & SEED DATA
--- =========================================================
+-- =============================================================
+-- GROVASTRA SUPABASE SCHEMA
+-- Run this entire file in your Supabase SQL Editor
+-- =============================================================
 
--- 1. SHOPS TABLE
+-- 1. SHOPS
 CREATE TABLE IF NOT EXISTS public.shops (
-  id TEXT PRIMARY KEY,
-  shop_code TEXT UNIQUE NOT NULL,
-  shop_name TEXT NOT NULL,
-  client_name TEXT NOT NULL,
-  location TEXT NOT NULL,
-  contact_number TEXT DEFAULT '',
-  shop_type TEXT DEFAULT 'Saree Retail',
-  staff_count INT DEFAULT 1,
-  years_in_business INT DEFAULT 1,
-  online_presence TEXT[] DEFAULT '{}',
-  created_by TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  shop_code        TEXT NOT NULL UNIQUE,
+  shop_name        TEXT NOT NULL,
+  client_name      TEXT NOT NULL DEFAULT 'Valued Client',
+  location         TEXT NOT NULL DEFAULT 'Andhra Pradesh',
+  contact_number   TEXT DEFAULT '',
+  shop_type        TEXT DEFAULT 'Saree Retail',
+  staff_count      INTEGER DEFAULT 3,
+  years_in_business INTEGER DEFAULT 5,
+  online_presence  TEXT[] DEFAULT ARRAY['WhatsApp'],
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2. INTERVIEWERS TABLE
+-- 2. INTERVIEWERS
 CREATE TABLE IF NOT EXISTS public.interviewers (
-  id TEXT PRIMARY KEY,
-  user_id TEXT,
-  name TEXT NOT NULL,
-  email TEXT,
-  mobile TEXT,
-  active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       TEXT NOT NULL,
+  email      TEXT NOT NULL UNIQUE,
+  mobile     TEXT DEFAULT '',
+  active     BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 3. SURVEY VERSIONS TABLE
-CREATE TABLE IF NOT EXISTS public.survey_versions (
-  id TEXT PRIMARY KEY,
-  version_name TEXT NOT NULL,
-  version_number TEXT NOT NULL,
-  active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 4. INTERVIEWS TABLE
+-- 3. INTERVIEWS
 CREATE TABLE IF NOT EXISTS public.interviews (
-  id TEXT PRIMARY KEY,
-  interview_code TEXT UNIQUE NOT NULL,
-  shop_id TEXT NOT NULL REFERENCES public.shops(id) ON DELETE CASCADE,
-  interviewer_id TEXT,
-  survey_version_id TEXT,
-  started_at TIMESTAMPTZ DEFAULT NOW(),
-  completed_at TIMESTAMPTZ,
-  duration_minutes INT DEFAULT 15,
-  main_completed BOOLEAN DEFAULT FALSE,
-  optional_completed BOOLEAN DEFAULT FALSE,
-  optional_declined BOOLEAN DEFAULT FALSE,
+  id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  interview_code           TEXT NOT NULL UNIQUE,
+  shop_id                  UUID NOT NULL REFERENCES public.shops(id) ON DELETE CASCADE,
+  interviewer_id           TEXT NOT NULL DEFAULT 'emp-int-01',
+  started_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  completed_at             TIMESTAMPTZ,
+  duration_minutes         INTEGER DEFAULT 15,
+  main_completed           BOOLEAN DEFAULT FALSE,
+  optional_completed       BOOLEAN DEFAULT FALSE,
+  optional_declined        BOOLEAN DEFAULT FALSE,
   further_questions_allowed BOOLEAN DEFAULT FALSE,
-  quick_followup BOOLEAN DEFAULT FALSE,
-  status TEXT DEFAULT 'draft',
-  overall_score NUMERIC DEFAULT 0,
-  verdict TEXT,
-  is_walkin BOOLEAN DEFAULT TRUE,
-  photo_url TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  quick_followup           BOOLEAN DEFAULT FALSE,
+  status                   TEXT NOT NULL DEFAULT 'draft',
+  overall_score            INTEGER DEFAULT 0,
+  verdict                  TEXT DEFAULT 'Moderate Opportunity',
+  is_walkin                BOOLEAN DEFAULT TRUE,
+  photo_url                TEXT,
+  created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 5. CATEGORIES TABLE
+-- 4. CATEGORIES
 CREATE TABLE IF NOT EXISTS public.categories (
-  id TEXT PRIMARY KEY,
-  category_code TEXT UNIQUE NOT NULL,
-  category_name TEXT NOT NULL,
-  description TEXT,
-  active BOOLEAN DEFAULT TRUE,
-  display_order INT NOT NULL
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  category_code  TEXT NOT NULL UNIQUE,
+  category_name  TEXT NOT NULL,
+  description    TEXT DEFAULT '',
+  active         BOOLEAN DEFAULT TRUE,
+  display_order  INTEGER DEFAULT 0
 );
 
--- 6. FEATURES TABLE
+-- 5. FEATURES
 CREATE TABLE IF NOT EXISTS public.features (
-  id TEXT PRIMARY KEY,
-  feature_code TEXT UNIQUE NOT NULL,
-  feature_name TEXT NOT NULL,
-  category_id TEXT NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
-  category_code TEXT,
-  description TEXT,
-  active BOOLEAN DEFAULT TRUE
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  feature_code  TEXT NOT NULL UNIQUE,
+  feature_name  TEXT NOT NULL,
+  category_id   TEXT NOT NULL,
+  description   TEXT DEFAULT '',
+  active        BOOLEAN DEFAULT TRUE
 );
 
--- 7. QUESTIONS TABLE
+-- 6. QUESTIONS
 CREATE TABLE IF NOT EXISTS public.questions (
-  id TEXT PRIMARY KEY,
-  question_code TEXT UNIQUE NOT NULL,
-  category_id TEXT NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
-  question_type TEXT NOT NULL CHECK (question_type IN ('Main', 'Optional')),
-  question_text TEXT NOT NULL,
-  display_order INT NOT NULL,
-  priority INT NOT NULL,
-  active BOOLEAN DEFAULT TRUE,
-  feature_id TEXT REFERENCES public.features(id) ON DELETE SET NULL,
-  trigger_rule JSONB,
-  category_code TEXT,
-  feature_code TEXT
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  question_code  TEXT NOT NULL UNIQUE,
+  category_id    TEXT NOT NULL,
+  feature_id     TEXT,
+  question_type  TEXT NOT NULL DEFAULT 'Main',
+  question_text  TEXT NOT NULL,
+  display_order  INTEGER DEFAULT 0,
+  priority       TEXT DEFAULT 'High',
+  active         BOOLEAN DEFAULT TRUE,
+  trigger_rule   JSONB,
+  category_code  TEXT,
+  feature_code   TEXT
 );
 
--- 8. QUESTION OPTIONS TABLE
+-- 7. QUESTION OPTIONS
 CREATE TABLE IF NOT EXISTS public.question_options (
-  id TEXT PRIMARY KEY,
-  question_id TEXT NOT NULL REFERENCES public.questions(id) ON DELETE CASCADE,
-  option_label TEXT NOT NULL,
-  score NUMERIC,
-  display_order INT NOT NULL
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  question_id   TEXT NOT NULL,
+  option_label  TEXT NOT NULL,
+  score         INTEGER DEFAULT 0,
+  display_order INTEGER DEFAULT 0
 );
 
--- 9. RESPONSES TABLE
+-- 8. RESPONSES
 CREATE TABLE IF NOT EXISTS public.responses (
-  id TEXT PRIMARY KEY,
-  interview_id TEXT NOT NULL REFERENCES public.interviews(id) ON DELETE CASCADE,
-  question_id TEXT NOT NULL REFERENCES public.questions(id) ON DELETE CASCADE,
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  interview_id       UUID NOT NULL REFERENCES public.interviews(id) ON DELETE CASCADE,
+  question_id        TEXT NOT NULL,
   selected_option_id TEXT,
-  answer_text TEXT,
-  score NUMERIC,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  answer_text        TEXT,
+  score              INTEGER,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 10. FEATURE INTEREST TABLE
-CREATE TABLE IF NOT EXISTS public.feature_interest (
-  id TEXT PRIMARY KEY,
-  interview_id TEXT NOT NULL REFERENCES public.interviews(id) ON DELETE CASCADE,
-  feature_id TEXT NOT NULL REFERENCES public.features(id) ON DELETE CASCADE,
-  interest_level TEXT,
-  priority_rank INT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 11. PAIN POINTS TABLE
-CREATE TABLE IF NOT EXISTS public.pain_points (
-  id TEXT PRIMARY KEY,
-  interview_id TEXT NOT NULL REFERENCES public.interviews(id) ON DELETE CASCADE,
-  category_id TEXT NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
-  pain_type TEXT,
-  severity INT,
-  frequency TEXT,
-  impact TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 12. PURCHASE INTENT TABLE
-CREATE TABLE IF NOT EXISTS public.purchase_intent (
-  id TEXT PRIMARY KEY,
-  interview_id TEXT NOT NULL REFERENCES public.interviews(id) ON DELETE CASCADE,
-  interest_level TEXT,
-  readiness_level TEXT,
-  price_range TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 13. SHOP PHOTOS TABLE
-CREATE TABLE IF NOT EXISTS public.shop_photos (
-  id TEXT PRIMARY KEY,
-  shop_id TEXT NOT NULL REFERENCES public.shops(id) ON DELETE CASCADE,
-  interview_id TEXT NOT NULL REFERENCES public.interviews(id) ON DELETE CASCADE,
-  storage_path TEXT,
-  photo_url TEXT NOT NULL,
-  captured_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 14. CATEGORY SCORES TABLE
+-- 9. CATEGORY SCORES
 CREATE TABLE IF NOT EXISTS public.category_scores (
-  id TEXT PRIMARY KEY,
-  interview_id TEXT NOT NULL REFERENCES public.interviews(id) ON DELETE CASCADE,
-  category_id TEXT NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
-  total_score NUMERIC NOT NULL,
-  maximum_score NUMERIC NOT NULL,
-  percentage NUMERIC NOT NULL,
-  status TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  interview_id   UUID NOT NULL REFERENCES public.interviews(id) ON DELETE CASCADE,
+  category_id    TEXT NOT NULL,
+  total_score    INTEGER DEFAULT 0,
+  maximum_score  INTEGER DEFAULT 6,
+  percentage     INTEGER DEFAULT 0,
+  status         TEXT DEFAULT 'Moderate Opportunity',
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 15. AUDIT LOGS TABLE
-CREATE TABLE IF NOT EXISTS public.audit_logs (
-  id TEXT PRIMARY KEY,
-  user_id TEXT,
-  action TEXT NOT NULL,
-  entity_type TEXT,
-  entity_id TEXT,
-  details JSONB,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+-- 10. PURCHASE INTENT
+CREATE TABLE IF NOT EXISTS public.purchase_intent (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  interview_id     UUID NOT NULL REFERENCES public.interviews(id) ON DELETE CASCADE,
+  interest_level   TEXT DEFAULT 'Yes, definitely interested',
+  readiness_level  TEXT DEFAULT 'Yes, ready to start',
+  price_range      TEXT DEFAULT '₹2,000–₹5,000/month',
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- =========================================================
--- CREATE INDEXES FOR FAST PERFORMANCE
--- =========================================================
-CREATE INDEX IF NOT EXISTS idx_shops_code ON public.shops(shop_code);
-CREATE INDEX IF NOT EXISTS idx_interviews_code ON public.interviews(interview_code);
-CREATE INDEX IF NOT EXISTS idx_interviews_shop_id ON public.interviews(shop_id);
-CREATE INDEX IF NOT EXISTS idx_responses_interview_id ON public.responses(interview_id);
-CREATE INDEX IF NOT EXISTS idx_responses_question_id ON public.responses(question_id);
-CREATE INDEX IF NOT EXISTS idx_category_scores_interview_id ON public.category_scores(interview_id);
-CREATE INDEX IF NOT EXISTS idx_purchase_intent_interview_id ON public.purchase_intent(interview_id);
+-- 11. SHOP PHOTOS
+CREATE TABLE IF NOT EXISTS public.shop_photos (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  shop_id      UUID NOT NULL REFERENCES public.shops(id) ON DELETE CASCADE,
+  interview_id UUID NOT NULL REFERENCES public.interviews(id) ON DELETE CASCADE,
+  storage_path TEXT DEFAULT '',
+  photo_url    TEXT DEFAULT '',
+  captured_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- =============================================================
+-- INDEXES for performance
+-- =============================================================
+CREATE INDEX IF NOT EXISTS idx_interviews_shop_id       ON public.interviews(shop_id);
+CREATE INDEX IF NOT EXISTS idx_interviews_created_at    ON public.interviews(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_interviews_status        ON public.interviews(status);
+CREATE INDEX IF NOT EXISTS idx_responses_interview_id   ON public.responses(interview_id);
+CREATE INDEX IF NOT EXISTS idx_cat_scores_interview_id  ON public.category_scores(interview_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_intent_inv_id   ON public.purchase_intent(interview_id);
 CREATE INDEX IF NOT EXISTS idx_shop_photos_interview_id ON public.shop_photos(interview_id);
 
--- =========================================================
--- ENABLE ROW LEVEL SECURITY (RLS) ON ALL TABLES
--- =========================================================
-ALTER TABLE public.shops ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.interviewers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.survey_versions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.interviews ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.features ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.questions ENABLE ROW LEVEL SECURITY;
+-- =============================================================
+-- ROW LEVEL SECURITY - Disable for service role (used in API)
+-- =============================================================
+ALTER TABLE public.shops           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interviewers    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interviews      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.categories      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.features        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.questions       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.question_options ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.responses ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.feature_interest ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.pain_points ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.purchase_intent ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.shop_photos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.responses       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.category_scores ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.purchase_intent ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shop_photos     ENABLE ROW LEVEL SECURITY;
 
--- =========================================================
--- CREATE RLS POLICIES FOR ANONYMOUS & SERVICE ROLE ACCESS
--- =========================================================
-DO $$
-DECLARE
-  t TEXT;
-BEGIN
-  FOR t IN SELECT unnest(ARRAY[
-    'shops', 'interviewers', 'survey_versions', 'interviews',
-    'categories', 'features', 'questions', 'question_options',
-    'responses', 'feature_interest', 'pain_points', 'purchase_intent',
-    'shop_photos', 'category_scores', 'audit_logs'
-  ]) LOOP
-    EXECUTE format('DROP POLICY IF EXISTS "Public select policy" ON public.%I', t);
-    EXECUTE format('CREATE POLICY "Public select policy" ON public.%I FOR SELECT USING (true)', t);
-    
-    EXECUTE format('DROP POLICY IF EXISTS "Public insert policy" ON public.%I', t);
-    EXECUTE format('CREATE POLICY "Public insert policy" ON public.%I FOR INSERT WITH CHECK (true)', t);
-    
-    EXECUTE format('DROP POLICY IF EXISTS "Public update policy" ON public.%I', t);
-    EXECUTE format('CREATE POLICY "Public update policy" ON public.%I FOR UPDATE USING (true)', t);
-    
-    EXECUTE format('DROP POLICY IF EXISTS "Public delete policy" ON public.%I', t);
-    EXECUTE format('CREATE POLICY "Public delete policy" ON public.%I FOR DELETE USING (true)', t);
-  END LOOP;
-END $$;
+-- Allow full access via service role key (used in API routes)
+CREATE POLICY "service_role_all_shops"            ON public.shops            FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all_interviewers"     ON public.interviewers     FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all_interviews"       ON public.interviews       FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all_categories"       ON public.categories       FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all_features"         ON public.features         FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all_questions"        ON public.questions        FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all_question_options" ON public.question_options FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all_responses"        ON public.responses        FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all_category_scores"  ON public.category_scores  FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all_purchase_intent"  ON public.purchase_intent  FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all_shop_photos"      ON public.shop_photos      FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- =============================================================
+-- SEED: Default Interviewer
+-- =============================================================
+INSERT INTO public.interviewers (id, name, email, mobile, active)
+VALUES ('a0000000-0000-0000-0000-000000000001', 'Navadeep', 'navadeep@groviews.com', '9704917189', true)
+ON CONFLICT (email) DO NOTHING;
